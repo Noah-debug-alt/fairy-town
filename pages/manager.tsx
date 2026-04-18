@@ -25,6 +25,7 @@ interface Character {
   novelId: number;
   name: string;
   avatarUrl: string | null;
+  imageUrl: string | null;  // 添加 imageUrl 字段 - 角色形象图片
   description: string;
   plotSetting: string;
   relationships: string;
@@ -205,7 +206,11 @@ const ManagerPage: React.FC = () => {
               </Card>
               <Card><Divider style={{ marginRight: 'auto' }}>角色列表</Divider>
                 {characters.length > 0 ? <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(auto-fill, minmax(150px, 1fr))' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: isMobile ? 8 : 16 }}>
-                  {characters.map(c => <Card hoverable key={c.id} onClick={() => handleCharacterClick(c)} cover={<div style={{ height: isMobile ? 80 : 120, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>{c.avatarUrl ? <img src={c.avatarUrl} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Avatar size={isMobile ? 50 : 80} icon={<UserOutlined />} />}</div>} styles={{ body: { padding: isMobile ? 8 : 12 } }}><Card.Meta title={<Text strong ellipsis>{c.name}</Text>} description={<Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 0, fontSize: 12, color: '#666' }}>{c.description}</Paragraph>} /></Card>)}
+                  {characters.map(c => {
+                    // 修复：优先使用 imageUrl（角色形象图），其次 avatarUrl
+                    const charImage = c.imageUrl || c.avatarUrl;
+                    return <Card hoverable key={c.id} onClick={() => handleCharacterClick(c)} cover={<div style={{ height: isMobile ? 80 : 120, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>{charImage ? <img src={charImage} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Avatar size={isMobile ? 50 : 80} icon={<UserOutlined />} />}</div>} styles={{ body: { padding: isMobile ? 8 : 12 } }}><Card.Meta title={<Text strong ellipsis>{c.name}</Text>} description={<Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 0, fontSize: 12, color: '#666' }}>{c.description}</Paragraph>} /></Card>;
+                  })}
                 </div> : <Empty description={selectedNovel.parseStatus === 'PARSED' ? '暂无角色' : '请先解析'} />}
               </Card>
             </div>
@@ -223,8 +228,9 @@ const ManagerPage: React.FC = () => {
                 children: (
                   <div>
                     <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                      {selectedCharacter.avatarUrl
-                        ? <img src={selectedCharacter.avatarUrl} alt={selectedCharacter.name} style={{ width: 100, height: 100, borderRadius: '50%', objectFit: 'cover' }} />
+                      {/* 修复：优先使用 imageUrl（角色形象图），其次 avatarUrl */}
+                      {(selectedCharacter.imageUrl || selectedCharacter.avatarUrl)
+                        ? <img src={selectedCharacter.imageUrl || selectedCharacter.avatarUrl || ''} alt={selectedCharacter.name} style={{ width: 100, height: 100, borderRadius: '50%', objectFit: 'cover' }} />
                         : <Avatar size={100} icon={<UserOutlined />} />}
                       <Title level={3} style={{ marginTop: 12, marginBottom: 0 }}>{selectedCharacter.name}</Title>
                     </div>

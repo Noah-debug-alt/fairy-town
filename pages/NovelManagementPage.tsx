@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Table, Button, Card, Typography, message, Modal, Descriptions } from 'antd';
-import { EyeOutlined, DeleteOutlined, SyncOutlined, HomeOutlined } from '@ant-design/icons';
+import { Table, Button, Card, Typography, message, Modal, Descriptions, Avatar } from 'antd';
+import { EyeOutlined, DeleteOutlined, SyncOutlined, HomeOutlined, UserOutlined } from '@ant-design/icons';
 
 const { Title } = Typography;
 
@@ -21,6 +21,7 @@ interface Character {
   novelId: number;
   name: string;
   avatarUrl: string | null;
+  imageUrl: string | null;
   description: string;
   plotSetting: string;
   relationships: string;
@@ -309,6 +310,24 @@ const NovelManagementPage: React.FC = () => {
       >
         <Table
           columns={[
+            {
+              title: '头像',
+              key: 'avatar',
+              width: 70,
+              render: (_: unknown, record: Character) => {
+                const imgSrc = record.imageUrl || record.avatarUrl
+                return (
+                  <Avatar
+                    src={imgSrc}
+                    icon={!imgSrc && <UserOutlined />}
+                    size={40}
+                    style={{ backgroundColor: imgSrc ? undefined : '#667eea' }}
+                  >
+                    {!imgSrc ? record.name?.charAt(0) : undefined}
+                  </Avatar>
+                )
+              }
+            },
             {
               title: '角色名称',
               dataIndex: 'name',

@@ -73,7 +73,7 @@ async function startServer() {
             } catch (err: ApiError) {
               console.error('上传失败:', err)
               res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ code: 500, message: '服务器错�? ' + err.message }))
+              res.end(JSON.stringify({ code: 500, message: '服务器错误: ' + err.message }))
             }
           })
           return
@@ -146,31 +146,59 @@ async function startServer() {
         if (path.match(/^\/api\/novel\/\d+$/) && req.method === 'DELETE') {
           const id = parseInt(path.split('/')[3])
 
+          const deleteLog: string[] = []
+          const startTime = Date.now()
           let db = null
+          let imageDeleteErrors: string[] = []
+
           try {
             const { PrismaClient } = await import('@prisma/client')
             const prisma = new PrismaClient()
 
+            const novel = await prisma.novel.findUnique({ where: { id } })
+            if (!novel) {
+              await prisma.$disconnect()
+              res.writeHead(404, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 404, message: '小说不存在' }))
+              return
+            }
+
+            deleteLog.push(`[开始删除] 小说ID: ${id}, 标题: "${novel.title}"`)
+
             const scenes = await prisma.scene.findMany({ where: { novelId: id } })
             const characters = await prisma.character.findMany({ where: { novelId: id } })
+            const plots = await prisma.plot.findMany({ where: { novelId: id } })
+            const memories = await prisma.memory.findMany({ where: { novelId: id } })
+            const chatMessages = await prisma.chatMessage.findMany({ where: { novelId: id } })
+            const townEvents = await prisma.townEvent.findMany({ where: { novelId: id } })
+
+            deleteLog.push(`[数据统计] 场景: ${scenes.length}, 角色: ${characters.length}, 情节: ${plots.length}, 记忆: ${memories.length}, 聊天: ${chatMessages.length}, 事件: ${townEvents.length}`)
 
             const fs = await import('fs')
             const pathModule = await import('path')
-            const allImageUrls = [
-              ...scenes.map(s => s.imageUrl).filter((u): u is string => !!u && !u.startsWith('placeholder://')),
-              ...characters.map(c => c.imageUrl).filter((u): u is string => !!u && !u.startsWith('placeholder://')),
-              ...characters.map(c => c.avatarUrl).filter((u): u is string => !!u && !u.startsWith('placeholder://')),
-            ]
-            for (const imgUrl of allImageUrls) {
+            const allImageUrls: { url: string; type: string; owner: string }[] = [
+              ...scenes.map(s => ({ url: s.imageUrl, type: '场景图片', owner: s.name })),
+              ...characters.map(c => ({ url: c.imageUrl, type: '角色形象', owner: c.name })),
+              ...characters.map(c => ({ url: c.avatarUrl, type: '角色头像', owner: c.name })),
+            ].filter((item): item is { url: string; type: string; owner: string } => !!item.url && !item.url.startsWith('placeholder://'))
+
+            let deletedImageCount = 0
+            for (const imgItem of allImageUrls) {
               try {
-                const filePath = pathModule.join(process.cwd(), 'public', imgUrl)
+                const filePath = pathModule.join(process.cwd(), 'public', imgItem.url)
                 if (fs.existsSync(filePath)) {
                   fs.unlinkSync(filePath)
+                  deletedImageCount++
+                  deleteLog.push(`[删除图片] ${imgItem.type} - ${imgItem.owner}: ${imgItem.url}`)
                 }
               } catch (e) {
-                console.error('删除图片文件失败:', e)
+                const errMsg = `删除图片失败: ${imgItem.type} - ${imgItem.owner} (${imgItem.url})`
+                console.error(errMsg, e)
+                imageDeleteErrors.push(errMsg)
+                deleteLog.push(`[图片删除失败] ${errMsg}`)
               }
             }
+            deleteLog.push(`[图片统计] 成功删除: ${deletedImageCount}/${allImageUrls.length}`)
 
             await prisma.$disconnect()
 
@@ -180,36 +208,97 @@ async function startServer() {
             db.pragma('foreign_keys = OFF');
 
             const deleteStmt = db.transaction(() => {
-              db.prepare('DELETE FROM Memory WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM MemorySummary WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM Observation WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM Reflection WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM ChatMessage WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM ChatSession WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM PlotPredict WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM TownEvent WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM TownStatus WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM Scene WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM Character WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM Plot WHERE novelId = ?').run(id);
-              db.prepare('DELETE FROM Novel WHERE id = ?').run(id);
+              deleteLog.push('[开始数据库删除]')
+
+              const memoryCount = db.prepare('DELETE FROM Memory WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - Memory: ${memoryCount} 条`)
+
+              const memorySummaryCount = db.prepare('DELETE FROM MemorySummary WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - MemorySummary: ${memorySummaryCount} 条`)
+
+              const observationCount = db.prepare('DELETE FROM Observation WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - Observation: ${observationCount} 条`)
+
+              const reflectionCount = db.prepare('DELETE FROM Reflection WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - Reflection: ${reflectionCount} 条`)
+
+              const chatMessageCount = db.prepare('DELETE FROM ChatMessage WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - ChatMessage: ${chatMessageCount} 条`)
+
+              const chatSessionCount = db.prepare('DELETE FROM ChatSession WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - ChatSession: ${chatSessionCount} 条`)
+
+              const plotPredictCount = db.prepare('DELETE FROM PlotPredict WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - PlotPredict: ${plotPredictCount} 条`)
+
+              const townEventCount = db.prepare('DELETE FROM TownEvent WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - TownEvent: ${townEventCount} 条`)
+
+              const townStatusCount = db.prepare('DELETE FROM TownStatus WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - TownStatus: ${townStatusCount} 条`)
+
+              const plotCount = db.prepare('DELETE FROM Plot WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - Plot: ${plotCount} 条`)
+
+              const sceneCount = db.prepare('DELETE FROM Scene WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - Scene: ${sceneCount} 条`)
+
+              const characterCount = db.prepare('DELETE FROM Character WHERE novelId = ?').run(id).changes;
+              deleteLog.push(`  - Character: ${characterCount} 条`)
+
+              const novelCount = db.prepare('DELETE FROM Novel WHERE id = ?').run(id).changes;
+              deleteLog.push(`  - Novel: ${novelCount} 条`)
+
+              deleteLog.push('[数据库删除完成]')
             });
 
-            deleteStmt();
+            try {
+              deleteStmt();
+            } catch (txErr) {
+              deleteLog.push(`[事务失败] ${txErr}`)
+              throw txErr;
+            }
 
             db.pragma('foreign_keys = ON');
             db.close();
 
+            const elapsed = Date.now() - startTime
+            deleteLog.push(`[删除完成] 耗时: ${elapsed}ms`)
+
+            console.log('========== 删除日志 ==========')
+            deleteLog.forEach(log => console.log(log))
+            console.log('==============================')
+
+            const response: { code: number; message: string; data: { elapsed: number; deletedImages: number; log: string[]; errors: string[] } } = {
+              code: 200,
+              message: '删除成功',
+              data: {
+                elapsed,
+                deletedImages: deletedImageCount,
+                log: deleteLog,
+                errors: imageDeleteErrors
+              }
+            }
             res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ code: 200, message: '删除成功' }))
+            res.end(JSON.stringify(response))
           } catch (err: ApiError) {
+            deleteLog.push(`[删除失败] ${err.message}`)
+
             if (db) {
               try { db.pragma('foreign_keys = ON'); } catch (_e) { /* ignore close error */ }
               try { db.close(); } catch (_e) { /* ignore close error */ }
             }
-            console.error('删除小说失败:', err)
+
+            console.error('========== 删除失败日志 ==========')
+            deleteLog.forEach(log => console.error(log))
+            console.error('===================================')
+
             res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ code: 500, message: '删除失败: ' + err.message }))
+            res.end(JSON.stringify({
+              code: 500,
+              message: '删除失败: ' + err.message,
+              data: { log: deleteLog, errors: imageDeleteErrors }
+            }))
           }
           return
         }
@@ -242,8 +331,8 @@ async function startServer() {
             const scenes = analysisResult.scenes || []
             const plots = analysisResult.plots || []
 
-            console.log('解析结果 - 角色�?', characters.length)
-            console.log('解析结果 - 场景�?', scenes.length)
+            console.log('解析结果 - 角色数:', characters.length)
+            console.log('解析结果 - 场景数:', scenes.length)
             console.log('解析结果 - 场景列表:', scenes)
 
             const createdCharacters: { id: number; name: string }[] = []
@@ -340,10 +429,10 @@ async function startServer() {
                     data: {
                       characterId: charId,
                       novelId: id,
-                      content: `�?{plot.title}�?{memoryContent.trim()}`,
+                      content: `【${plot.title}】${memoryContent.trim()}`,
                       type: 'PLOT',
                       importance: plot.sceneIndex < 3 ? 8 : 6,
-                      tags: JSON.stringify(['小说情节', `�?{plot.chapterIndex}章第${plot.sceneIndex}节`]),
+                      tags: JSON.stringify(['小说情节', `第${plot.chapterIndex}章第${plot.sceneIndex}节`]),
                       source: 'manual',
                       timestamp: new Date()
                     }
@@ -362,7 +451,7 @@ async function startServer() {
               const dbScenes = await prisma.scene.findMany({ where: { novelId: id, isActive: true } })
               const dbCharacters = await prisma.character.findMany({ where: { novelId: id } })
 
-              console.log('开始为小说生成图片，场景数:', dbScenes.length, '角色�?', dbCharacters.length)
+              console.log('开始为小说生成图片，场景数:', dbScenes.length, '角色数:', dbCharacters.length)
 
               const imageResults = await generateAllImages(
                 dbScenes.map(s => ({ name: s.name, description: s.description || '', type: s.type })),
@@ -391,12 +480,15 @@ async function startServer() {
 
               console.log('图片生成完成')
             } catch (imgErr: ApiError) {
-              console.error('图片生成失败（不影响解析结果�?', imgErr.message)
+              console.error('图片生成失败（不影响解析结果）:', imgErr.message)
             }
+
+            // 修复：返回数据库中已更新图片的角色数据，而非LLM解析的原始数据
+            const dbCharactersForResponse = await prisma.character.findMany({ where: { novelId: id } })
 
             await prisma.$disconnect()
             res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ code: 200, message: '解析成功', data: { characters, plots } }))
+            res.end(JSON.stringify({ code: 200, message: '解析成功', data: { characters: dbCharactersForResponse, plots } }))
             return
           } catch (llmError: ApiError) {
             console.error('LLM解析失败:', llmError)
@@ -486,7 +578,7 @@ async function startServer() {
           return
         }
 
-        // PATCH /novel/:id/plots - 更新情节状�?
+        // PATCH /novel/:id/plots - 更新情节状态
         if (path.match(/^\/api\/novel\/\d+\/plots$/) && req.method === 'PATCH') {
           const novelId = parseInt(path.split('/')[3])
 
@@ -582,7 +674,7 @@ async function startServer() {
           const characters = await prisma.character.findMany({ where: { novelId } })
           const scenes = await prisma.scene.findMany({ where: { novelId, isActive: true } })
 
-          console.log('小镇数据 - 场景�?', scenes.length)
+          console.log('小镇数据 - 场景数:', scenes.length)
           console.log('小镇数据 - 场景列表:', scenes)
 
           await prisma.$disconnect()
@@ -741,7 +833,7 @@ async function startServer() {
               if (isRunning) {
                 const { startTownSimulation } = await import('./utils/agent/town')
                 await startTownSimulation(prisma, novelId, speed || 1)
-                console.log(`小镇模拟已启�? novelId=${novelId}, speed=${speed}`)
+                console.log(`小镇模拟已启动: novelId=${novelId}, speed=${speed}`)
               } else {
                 const { stopTownSimulation } = await import('./utils/agent/town')
                 stopTownSimulation()
@@ -753,7 +845,7 @@ async function startServer() {
               res.end(JSON.stringify({ code: 200, data: status }))
             } catch (err: ApiError) {
               res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ code: 500, message: '更新状态失�? ' + err.message }))
+              res.end(JSON.stringify({ code: 500, message: '更新状态失败: ' + err.message }))
             }
           })
           return

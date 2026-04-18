@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -28,184 +25,176 @@ model Agent {
 }
 
 model Novel {
-  id          Int          @id @default(autoincrement())
-  title       String
-  content     String
-  author      String
-  uploadTime  DateTime     @default(now())
-  parseStatus String       @default("UNPARSED")
-  remark      String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  characters  Character[]
-  memories    Memory[]
-  sessions    ChatSession[]
-  messages    ChatMessage[]
+  id           Int           @id @default(autoincrement())
+  title        String
+  content      String
+  author       String
+  uploadTime   DateTime      @default(now())
+  parseStatus  String        @default("UNPARSED")
+  remark       String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  characters   Character[]
+  messages     ChatMessage[]
+  sessions     ChatSession[]
+  memories     Memory[]
+  plots        Plot[]
   plotPredicts PlotPredict[]
-  plots       Plot[]
-  scenes      Scene[]
-  townEvents  TownEvent[]
-  townStatus  TownStatus?
+  scenes       Scene[]
+  townEvents   TownEvent[]
+  townStatus   TownStatus?
 }
 
 model Character {
-  id          Int      @id @default(autoincrement())
-  novelId     Int
-  name        String
-  avatarUrl   String?
-  description String
-  plotSetting String
+  id            Int      @id @default(autoincrement())
+  novelId       Int
+  name          String
+  avatarUrl     String?
+  description   String
+  plotSetting   String
   relationships String
-  出场情节     String
-  coreIdentity String?
-  classicLines String?
-  currentScene String  @default("小镇广场")
-  imageUrl    String?
-  imagePrompt String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  novel       Novel    @relation(fields: [novelId], references: [id])
-  memories    Memory[]
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 出场情节 String
+  coreIdentity  String?
+  classicLines  String?
+  currentScene  String   @default("小镇广场")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  imagePrompt   String?
+  imageUrl      String?
+  novel         Novel    @relation(fields: [novelId], references: [id])
+  memories      Memory[]
 }
 
 model Memory {
-  id           Int       @id @default(autoincrement())
-  characterId  Int
-  novelId      Int
-  content      String
-  timestamp    DateTime
-  type         String
-  importance   Int       @default(5)
-  tags         String    @default("[]")
-  
-  // 斯坦福小镇风格的新字段
-  isArchived   Boolean   @default(false)      // 是否已归档（用于记忆压缩）
-  isCompressed Boolean   @default(false)      // 是否已压缩
-  compressedFrom String?                      // 压缩来源的记忆ID列表
-  version      Int       @default(1)          // 记忆版本
-  expiresAt    DateTime?                     // 过期时间（可选）
-  
-  // 检索相关字段
-  embedding    String?                        // 向量嵌入（未来用于语义检索）
-  keywords     String    @default("[]")       // 提取的关键词
-  entities    String    @default("[]")       // 涉及的实体
-  sentiment    String?                        // 情感分析结果
-  
-  // 元数据
-  source       String    @default("auto")     // 记忆来源：auto/reflect/manual/event
-  relatedMemoryIds String @default("[]")      // 关联的记忆ID
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  character    Character @relation(fields: [characterId], references: [id])
-  novel        Novel     @relation(fields: [novelId], references: [id])
+  id               Int       @id @default(autoincrement())
+  characterId      Int
+  novelId          Int
+  content          String
+  timestamp        DateTime
+  type             String
+  importance       Int       @default(5)
+  tags             String    @default("[]")
+  isArchived       Boolean   @default(false)
+  isCompressed     Boolean   @default(false)
+  compressedFrom   String?
+  version          Int       @default(1)
+  expiresAt        DateTime?
+  embedding        String?
+  keywords         String    @default("[]")
+  entities         String    @default("[]")
+  sentiment        String?
+  source           String    @default("auto")
+  relatedMemoryIds String    @default("[]")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  novel            Novel     @relation(fields: [novelId], references: [id])
+  character        Character @relation(fields: [characterId], references: [id])
 }
 
-// 记忆摘要 - 用于快速检索（类似斯坦福的 memory stream）
 model MemorySummary {
-  id           Int       @id @default(autoincrement())
-  characterId  Int
-  novelId      Int
-  memoryType   String                        // 摘要类型：daily/weekly/important/event
-  content      String                       // 摘要内容
-  dateRangeStart DateTime?                  // 时间范围开始
-  dateRangeEnd   DateTime?                  // 时间范围结束
-  keywords     String    @default("[]")
-  memoryCount  Int       @default(0)         // 涉及的记忆数量
-  importance   Int       @default(5)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  characterId    Int
+  novelId        Int
+  memoryType     String
+  content        String
+  dateRangeStart DateTime?
+  dateRangeEnd   DateTime?
+  keywords       String    @default("[]")
+  memoryCount    Int       @default(0)
+  importance     Int       @default(5)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
-// 反思记录 - 存储角色的高层反思
 model Reflection {
-  id           Int       @id @default(autoincrement())
-  characterId  Int
-  novelId      Int
-  content      String
-  triggerEvent String?                        // 触发反思的事件
-  relatedMemories String @default("[]")      // 相关的记忆ID
-  importance   Int       @default(8)
-  isActive     Boolean   @default(true)      // 是否仍在影响角色行为
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              Int      @id @default(autoincrement())
+  characterId     Int
+  novelId         Int
+  content         String
+  triggerEvent    String?
+  relatedMemories String   @default("[]")
+  importance      Int      @default(8)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
-// 观察事件 - 记录角色观察到的事件
 model Observation {
-  id           Int       @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   characterId  Int
   novelId      Int
   content      String
-  sourceType   String                        // 事件来源：scene/character/dialogue
+  sourceType   String
   sourceId     Int?
-  sourceName   String?                      // 来源名称
-  location     String?                       // 发生地点
-  participants String    @default("[]")      // 参与者
-  emotion      String?                        // 观察时的情绪
-  isImportant  Boolean  @default(false)      // 是否重要
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  sourceName   String?
+  location     String?
+  participants String   @default("[]")
+  emotion      String?
+  isImportant  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model ChatSession {
-  id             Int      @id @default(autoincrement())
-  type           String
-  name           String   @default("聊天") // 新增 name 字段用于群聊名称
-  novelId        Int
-  sceneId        Int?     // 新增 sceneId 用于关联场景公共聊天
-  participantIds String   @default("[]")
-  createdAt      DateTime @default(now())
+  id              Int           @id @default(autoincrement())
+  type            String
+  name            String        @default("聊天")
+  novelId         Int
+  sceneId         Int?
+  participantIds  String        @default("[]")
+  createdAt       DateTime      @default(now())
   lastMessageTime DateTime
-  status         String   @default("STOPPED")
-  updatedAt      DateTime @updatedAt
-  novel          Novel    @relation(fields: [novelId], references: [id])
-  messages       ChatMessage[]
+  status          String        @default("STOPPED")
+  updatedAt       DateTime      @updatedAt
+  messages        ChatMessage[]
+  novel           Novel         @relation(fields: [novelId], references: [id])
 }
 
 model ChatMessage {
-  id        Int      @id @default(autoincrement())
-  novelId   Int
+  id         Int          @id @default(autoincrement())
+  novelId    Int
   senderType String
-  senderId  Int
+  senderId   Int
   receiverId Int
-  content   String
-  sendTime  DateTime
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  novel     Novel    @relation(fields: [novelId], references: [id])
-  session   ChatSession? @relation(fields: [sessionId], references: [id])
-  sessionId Int?
+  content    String
+  sendTime   DateTime
+  isRead     Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  sessionId  Int?
+  session    ChatSession? @relation(fields: [sessionId], references: [id])
+  novel      Novel        @relation(fields: [novelId], references: [id])
 }
 
 model PlotPredict {
-  id              Int      @id @default(autoincrement())
-  novelId         Int
-  content         String
-  predictTime     DateTime
+  id               Int      @id @default(autoincrement())
+  novelId          Int
+  content          String
+  predictTime      DateTime
   triggerCondition String
-  isSynced        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  novel           Novel    @relation(fields: [novelId], references: [id])
+  isSynced         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  novel            Novel    @relation(fields: [novelId], references: [id])
 }
 
 model Plot {
-  id                Int      @id @default(autoincrement())
-  novelId           Int
-  chapterIndex      Int      @default(0)
-  sceneIndex        Int      @default(0)
-  title             String
-  content           String
-  involvedCharacterIds String @default("[]")
-  dialogueContent   String   @default("[]")
-  narrationContent  String   @default("")
-  location          String   @default("")
-  isCompleted       Boolean  @default(false)
-  completedAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  novel             Novel    @relation(fields: [novelId], references: [id])
+  id                   Int       @id @default(autoincrement())
+  novelId              Int
+  chapterIndex         Int       @default(0)
+  sceneIndex           Int       @default(0)
+  title                String
+  content              String
+  involvedCharacterIds String    @default("[]")
+  dialogueContent      String    @default("[]")
+  narrationContent     String    @default("")
+  location             String    @default("")
+  isCompleted          Boolean   @default(false)
+  completedAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  novel                Novel     @relation(fields: [novelId], references: [id])
 }
 
 model Scene {
@@ -227,28 +216,28 @@ model Scene {
 }
 
 model TownEvent {
-  id          Int      @id @default(autoincrement())
-  novelId     Int
-  sceneId     Int?
-  characterId Int?
+  id            Int      @id @default(autoincrement())
+  novelId       Int
+  sceneId       Int?
+  characterId   Int?
+  type          String
+  content       String
+  timestamp     DateTime @default(now())
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   characterName String?
-  type        String
-  content     String
-  timestamp   DateTime @default(now())
-  isRead      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  novel       Novel    @relation(fields: [novelId], references: [id])
+  novel         Novel    @relation(fields: [novelId], references: [id])
 }
 
 model TownStatus {
-  id              Int      @id @default(autoincrement())
-  novelId         Int      @unique
-  isRunning       Boolean  @default(false)
-  speed           Int      @default(1)
-  currentTime     DateTime @default(now())
-  lastUpdateTime  DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  novel           Novel    @relation(fields: [novelId], references: [id])
+  id             Int      @id @default(autoincrement())
+  novelId        Int      @unique
+  isRunning      Boolean  @default(false)
+  speed          Int      @default(1)
+  currentTime    DateTime @default(now())
+  lastUpdateTime DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  novel          Novel    @relation(fields: [novelId], references: [id])
 }
