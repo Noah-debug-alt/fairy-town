@@ -40,19 +40,22 @@ def load_model(path: str):
         return True
 
     print(f"Loading model from: {path}")
+    
+    # RTX 50系列显卡需要更新的PyTorch版本，暂时使用CPU模式
+    use_cpu = True  # 强制使用CPU模式
+    
     try:
-        if torch.cuda.is_available():
+        if not use_cpu and torch.cuda.is_available():
             print("Using GPU")
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 path,
                 torch_dtype=torch.float16,
-                variant="fp16",
                 use_safetensors=True,
                 local_files_only=True,
             )
             pipe = pipe.to("cuda")
         else:
-            print("Using CPU")
+            print("Using CPU (RTX 50系列需要升级PyTorch才能使用GPU)")
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 path,
                 torch_dtype=torch.float32,
@@ -63,7 +66,7 @@ def load_model(path: str):
 
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 
-        if torch.cuda.is_available():
+        if not use_cpu and torch.cuda.is_available():
             pipe.enable_attention_slicing()
             pipe.enable_vae_slicing()
 
