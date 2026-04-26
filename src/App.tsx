@@ -35,10 +35,10 @@ function App() {
     <Router>
       <div className="app">
         <nav className="nav">
-          <Link to="/" className="nav-link">Home</Link>
-          <Link to="/novel-management" className="nav-link">Novel Management</Link>
-          <Link to="/manager" className="nav-link">Management Center</Link>
-          <Link to="/weaving" className="nav-link">Plot Weaving</Link>
+          <Link to="/" className="nav-link">首页</Link>
+          <Link to="/novel-management" className="nav-link">小说管理</Link>
+          <Link to="/manager" className="nav-link">管理中心</Link>
+          <Link to="/weaving" className="nav-link">情节编织坊</Link>
         </nav>
 
         <AppRoutes />

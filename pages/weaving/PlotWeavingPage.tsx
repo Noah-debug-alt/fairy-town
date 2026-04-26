@@ -36,8 +36,8 @@ const PlotWeavingPage: React.FC = () => {
                     setSelectedNovelId(parsedNovels[0].id);
                 }
             }
-        } catch (error) {
-            message.error('Failed to fetch novels');
+        } catch {
+            message.error('获取小说列表失败');
         } finally {
             setLoading(false);
         }
@@ -45,7 +45,7 @@ const PlotWeavingPage: React.FC = () => {
 
     const handleInterveneClick = () => {
         if (!selectedNovelId) {
-            message.warning('Please select a novel first');
+            message.warning('请先选择一部小说');
             return;
         }
         navigate(`/weaving/${selectedNovelId}/intervene`);
@@ -53,7 +53,7 @@ const PlotWeavingPage: React.FC = () => {
 
     const handlePredictClick = () => {
         if (!selectedNovelId) {
-            message.warning('Please select a novel first');
+            message.warning('请先选择一部小说');
             return;
         }
         navigate(`/weaving/${selectedNovelId}/predict`);
@@ -72,22 +72,22 @@ const PlotWeavingPage: React.FC = () => {
             <div style={{ textAlign: 'center', marginBottom: 40 }}>
                 <Title level={1}>
                     <span style={{ marginRight: 12 }}>🧶</span>
-                    Plot Weaving Workshop
+                    情节编织坊
                 </Title>
                 <Text type="secondary" style={{ fontSize: 16 }}>
-                    Intervene in existing plots or predict future developments
+                    干预已有情节或预测未来发展
                 </Text>
             </div>
 
             <Card style={{ marginBottom: 32, borderRadius: 12 }}>
                 <Row gutter={[16, 16]} align="middle">
                     <Col xs={24} sm={8}>
-                        <Text strong>Select Novel:</Text>
+                        <Text strong>选择小说：</Text>
                     </Col>
                     <Col xs={24} sm={16}>
                         <Select
                             style={{ width: '100%' }}
-                            placeholder="Select a novel"
+                            placeholder="请选择一部小说"
                             value={selectedNovelId}
                             onChange={setSelectedNovelId}
                             options={novels.map(n => ({
@@ -101,7 +101,7 @@ const PlotWeavingPage: React.FC = () => {
 
             {novels.length === 0 ? (
                 <Empty
-                    description="No parsed novels available. Please upload and parse a novel first."
+                    description="暂无已解析的小说，请先上传并解析小说"
                     style={{ marginTop: 60 }}
                 />
             ) : (
@@ -136,14 +136,14 @@ const PlotWeavingPage: React.FC = () => {
                             }}>
                                 <EditOutlined style={{ fontSize: 36, color: '#fff' }} />
                             </div>
-                            <Title level={3} style={{ marginBottom: 12 }}>Intervene Existing Plots</Title>
+                            <Title level={3} style={{ marginBottom: 12 }}>干预已有情节</Title>
                             <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.8 }}>
-                                Modify plots that have already happened, change character dialogues and actions, create new story directions
+                                修改已经发生的情节，改变角色对话和行动，创造新的故事走向
                             </Text>
                             <div style={{ marginTop: 20 }}>
                                 <Text type="secondary">
                                     <BookOutlined style={{ marginRight: 8 }} />
-                                    Modify existing plots
+                                    修改现有情节
                                 </Text>
                             </div>
                         </Card>
@@ -179,14 +179,14 @@ const PlotWeavingPage: React.FC = () => {
                             }}>
                                 <BulbOutlined style={{ fontSize: 36, color: '#fff' }} />
                             </div>
-                            <Title level={3} style={{ marginBottom: 12 }}>Predict Future Plots</Title>
+                            <Title level={3} style={{ marginBottom: 12 }}>预测未来情节</Title>
                             <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.8 }}>
-                                AI predicts multiple possible future developments based on existing plots, you can choose or modify them
+                                AI根据已有情节预测多种可能的后续发展，你可以选择或修改
                             </Text>
                             <div style={{ marginTop: 20 }}>
                                 <Text type="secondary">
                                     <BulbOutlined style={{ marginRight: 8 }} />
-                                    AI-generated predictions
+                                    AI生成预测
                                 </Text>
                             </div>
                         </Card>

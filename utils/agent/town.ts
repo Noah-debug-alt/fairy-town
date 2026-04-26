@@ -66,19 +66,33 @@ export class TownSimulator {
         this.currentDialogueIndex = 0;
         this.novelCompleted = false;
 
-        const completedPlots = await this.prisma.plot.findMany({
-            where: { novelId, isCompleted: true },
-            orderBy: [
-                { chapterIndex: 'asc' },
-                { sceneIndex: 'asc' }
-            ]
+        // 尝试从 TownStatus 恢复进度
+        const townStatus = await this.prisma.townStatus.findUnique({
+            where: { novelId }
         });
 
-        if (completedPlots.length > 0) {
-            const lastCompletedPlot = completedPlots[completedPlots.length - 1];
-            const lastCompletedIndex = this.plots.findIndex(p => p.id === lastCompletedPlot.id);
-            if (lastCompletedIndex !== -1) {
-                this.currentPlotIndex = lastCompletedIndex + 1;
+        if (townStatus) {
+            // 恢复保存的进度
+            this.currentPlotIndex = townStatus.currentPlotIndex || 0;
+            this.currentDialogueIndex = townStatus.currentDialogueIndex || 0;
+            this.speed = townStatus.speed || 1;
+            console.log(`[恢复进度] 情节索引: ${this.currentPlotIndex}, 对话索引: ${this.currentDialogueIndex}`);
+        } else {
+            // 如果没有保存的进度，从已完成的情节计算
+            const completedPlots = await this.prisma.plot.findMany({
+                where: { novelId, isCompleted: true },
+                orderBy: [
+                    { chapterIndex: 'asc' },
+                    { sceneIndex: 'asc' }
+                ]
+            });
+
+            if (completedPlots.length > 0) {
+                const lastCompletedPlot = completedPlots[completedPlots.length - 1];
+                const lastCompletedIndex = this.plots.findIndex(p => p.id === lastCompletedPlot.id);
+                if (lastCompletedIndex !== -1) {
+                    this.currentPlotIndex = lastCompletedIndex + 1;
+                }
             }
         }
 
@@ -116,6 +130,30 @@ export class TownSimulator {
 
     setSpeed(speed: number) {
         this.speed = speed;
+    }
+
+    // 保存模拟进度到数据库
+    async saveProgress() {
+        if (!this.novel) return;
+
+        await this.prisma.townStatus.upsert({
+            where: { novelId: this.novel.id },
+            update: {
+                currentPlotIndex: this.currentPlotIndex,
+                currentDialogueIndex: this.currentDialogueIndex,
+                speed: this.speed,
+                lastUpdateTime: new Date()
+            },
+            create: {
+                novelId: this.novel.id,
+                currentPlotIndex: this.currentPlotIndex,
+                currentDialogueIndex: this.currentDialogueIndex,
+                speed: this.speed,
+                isRunning: true
+            }
+        });
+
+        console.log(`[保存进度] 情节索引: ${this.currentPlotIndex}, 对话索引: ${this.currentDialogueIndex}`);
     }
 
     advanceTime(minutes: number = 10) {
@@ -404,6 +442,9 @@ export class TownSimulator {
                     this.novelCompleted = true;
                 }
 
+                // 保存进度
+                await this.saveProgress();
+
                 console.log(`[纯旁白情节完成] ${currentPlot.title}, 进度: ${this.currentPlotIndex}/${this.plots.length}`);
 
                 await this.prisma.townEvent.create({
@@ -531,6 +572,9 @@ export class TownSimulator {
             if (this.currentPlotIndex >= this.plots.length) {
                 this.novelCompleted = true;
             }
+
+            // 保存进度
+            await this.saveProgress();
 
             console.log(`[情节完成] ${currentPlot.title}, 进度: ${this.currentPlotIndex}/${this.plots.length}`);
 

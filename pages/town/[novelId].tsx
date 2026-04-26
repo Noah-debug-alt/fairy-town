@@ -11,7 +11,7 @@ import {
     SearchOutlined, UserOutlined, EnvironmentOutlined,
     MessageOutlined, PlayCircleOutlined, PauseCircleOutlined,
     SmileOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-    CameraOutlined,
+    CameraOutlined, EditOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import TownMap from '../../components/TownMap';
 import type { MapScene, MapCharacter, MapEvent } from '../../components/TownMap';
@@ -171,6 +171,29 @@ const TownVisualizationPage: React.FC = () => {
 
     const handleClearEvents = () => {
         setEvents([]);
+    };
+
+    const handleResetProgress = async () => {
+        try {
+            const response = await fetch(`/api/town/${novelId}/reset-progress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plotIndex: 0, resetCompleted: true })
+            });
+            const result = await response.json();
+            if (result.code === 200) {
+                message.success('进度已重置，请重新启动模拟');
+                mutate();
+            } else {
+                message.error(result.message || '重置失败');
+            }
+        } catch (error) {
+            message.error('重置失败');
+        }
+    };
+
+    const handleGoToWeaving = () => {
+        navigate(`/weaving/${novelId}/intervene`);
     };
 
     const renderEventContent = (content: string) => {
@@ -427,6 +450,22 @@ const TownVisualizationPage: React.FC = () => {
                             icon={<CameraOutlined />}
                             onClick={handleGenerateImages}
                             loading={generatingImages}
+                            style={{ color: '#fff' }}
+                        />
+                    </Tooltip>
+                    <Tooltip title="情节编织坊">
+                        <Button
+                            type="text"
+                            icon={<EditOutlined />}
+                            onClick={handleGoToWeaving}
+                            style={{ color: '#fff' }}
+                        />
+                    </Tooltip>
+                    <Tooltip title="重置进度">
+                        <Button
+                            type="text"
+                            icon={<UndoOutlined />}
+                            onClick={handleResetProgress}
                             style={{ color: '#fff' }}
                         />
                     </Tooltip>

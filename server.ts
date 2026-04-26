@@ -2103,6 +2103,62 @@ ${contextMessages}
           return
         }
 
+        // POST /api/town/:novelId/reset-progress - Reset simulation progress
+        if (path.match(/^\/api\/town\/\d+\/reset-progress$/) && req.method === 'POST') {
+          const novelId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              const data = body ? JSON.parse(body) : {}
+              const { plotIndex, resetCompleted } = data
+
+              // 更新 TownStatus
+              await prisma.townStatus.upsert({
+                where: { novelId },
+                update: {
+                  currentPlotIndex: plotIndex || 0,
+                  currentDialogueIndex: 0,
+                  lastUpdateTime: new Date()
+                },
+                create: {
+                  novelId,
+                  currentPlotIndex: plotIndex || 0,
+                  currentDialogueIndex: 0,
+                  isRunning: false
+                }
+              })
+
+              // 如果需要重置已完成的情节
+              if (resetCompleted) {
+                await prisma.plot.updateMany({
+                  where: { novelId },
+                  data: { isCompleted: false, completedAt: null }
+                })
+              }
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                message: 'Progress reset successfully',
+                data: {
+                  currentPlotIndex: plotIndex || 0,
+                  currentDialogueIndex: 0
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: 'Failed to reset progress: ' + err.message }))
+            }
+          })
+          return
+        }
+
         // GET /api/novel/:id/plots - Get plot list
         if (path.match(/^\/api\/novel\/\d+\/plots$/) && req.method === 'GET') {
           const novelId = parseInt(path.split('/')[3])

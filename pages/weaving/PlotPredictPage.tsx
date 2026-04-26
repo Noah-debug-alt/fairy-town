@@ -5,7 +5,7 @@ import {
     Progress, Space, Divider, Modal, List
 } from 'antd';
 import {
-    ArrowLeftOutlined, BulbOutlined, SyncOutlined,
+    ArrowLeftOutlined, BulbOutlined,
     CheckOutlined, EditOutlined, EyeOutlined
 } from '@ant-design/icons';
 
@@ -36,11 +36,11 @@ interface TownStatus {
 }
 
 const endingTypeMap: Record<string, { color: string; text: string; emoji: string }> = {
-    good: { color: 'green', text: 'Good Ending', emoji: '⭐' },
-    bad: { color: 'red', text: 'Bad Ending', emoji: '💀' },
-    hidden: { color: 'gold', text: 'Hidden Ending', emoji: '🌟' },
-    tragic: { color: 'purple', text: 'Tragic Ending', emoji: '💔' },
-    normal: { color: 'blue', text: 'Normal Ending', emoji: '📖' }
+    good: { color: 'green', text: '好结局', emoji: '⭐' },
+    bad: { color: 'red', text: '坏结局', emoji: '💀' },
+    hidden: { color: 'gold', text: '隐藏结局', emoji: '🌟' },
+    tragic: { color: 'purple', text: '悲剧结局', emoji: '💔' },
+    normal: { color: 'blue', text: '普通结局', emoji: '📖' }
 };
 
 const PlotPredictPage: React.FC = () => {
@@ -84,8 +84,8 @@ const PlotPredictPage: React.FC = () => {
             if (propheciesResult.code === 200) {
                 setProphecies(propheciesResult.data.prophecies || []);
             }
-        } catch (error) {
-            message.error('Failed to fetch data');
+        } catch {
+            message.error('获取数据失败');
         } finally {
             setLoading(false);
         }
@@ -104,12 +104,12 @@ const PlotPredictPage: React.FC = () => {
             const result = await response.json();
             if (result.code === 200) {
                 setProphecies(result.data.prophecies || []);
-                message.success('Prophecies generated successfully!');
+                message.success('预言生成成功！');
             } else {
-                message.error(result.message || 'Failed to generate prophecies');
+                message.error(result.message || '预言生成失败');
             }
-        } catch (error) {
-            message.error('Failed to generate prophecies');
+        } catch {
+            message.error('预言生成失败');
         } finally {
             setGenerating(false);
         }
@@ -124,23 +124,19 @@ const PlotPredictPage: React.FC = () => {
 
             const result = await response.json();
             if (result.code === 200) {
-                message.success('Prophecy adopted! New plots have been added.');
+                message.success('预言已采用！新情节已添加。');
                 fetchData();
             } else {
-                message.error(result.message || 'Failed to adopt prophecy');
+                message.error(result.message || '采用失败');
             }
-        } catch (error) {
-            message.error('Failed to adopt prophecy');
+        } catch {
+            message.error('采用失败');
         }
     };
 
     const handleViewProphecy = (prophecy: Prophecy) => {
         setSelectedProphecy(prophecy);
         setDetailVisible(true);
-    };
-
-    const handleInterveneProphecy = (prophecy: Prophecy) => {
-        navigate(`/weaving/${novelId}/predict/${prophecy.id}/intervene`);
     };
 
     const getCurrentProgress = () => {
@@ -168,32 +164,32 @@ const PlotPredictPage: React.FC = () => {
                     icon={<ArrowLeftOutlined />}
                     onClick={() => navigate('/weaving')}
                 >
-                    Back to Workshop
+                    返回编织坊
                 </Button>
             </div>
 
             <Card style={{ marginBottom: 24, borderRadius: 12 }}>
                 <Title level={2} style={{ margin: 0 }}>
                     <BulbOutlined style={{ marginRight: 12 }} />
-                    Predict Future Plots
+                    预测未来情节
                 </Title>
                 <Text type="secondary">
-                    AI predicts possible future developments based on existing plots
+                    AI根据已有情节预测可能的后续发展
                 </Text>
             </Card>
 
             <Card style={{ marginBottom: 24, borderRadius: 12 }}>
-                <Title level={5}>Current Progress</Title>
+                <Title level={5}>当前进度</Title>
                 <Progress
                     percent={progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}
-                    format={() => `${progress.current}/${progress.total} plots`}
+                    format={() => `${progress.current}/${progress.total} 个情节`}
                     strokeColor={{
                         '0%': '#667eea',
                         '100%': '#764ba2'
                     }}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                    Predictions will be based on plots up to the current progress
+                    预测将基于当前进度之前的情节生成
                 </Text>
             </Card>
 
@@ -212,18 +208,18 @@ const PlotPredictPage: React.FC = () => {
                         paddingRight: 32
                     }}
                 >
-                    {generating ? 'Generating Prophecies...' : 'Generate Prophecies'}
+                    {generating ? '正在生成预言...' : '生成预言'}
                 </Button>
                 <div style={{ marginTop: 12 }}>
                     <Text type="secondary">
-                        AI will generate multiple possible future developments
+                        AI将生成多个可能的后续发展
                     </Text>
                 </div>
             </Card>
 
             {prophecies.length > 0 && (
                 <>
-                    <Divider>Generated Prophecies</Divider>
+                    <Divider>生成的预言</Divider>
                     <List
                         dataSource={prophecies}
                         renderItem={(prophecy) => {
@@ -244,7 +240,7 @@ const PlotPredictPage: React.FC = () => {
                                                     {ending.emoji} {ending.text}
                                                 </Tag>
                                                 {prophecy.isAdopted && (
-                                                    <Tag color="green">Adopted</Tag>
+                                                    <Tag color="green">已采用</Tag>
                                                 )}
                                             </Space>
                                             <Title level={4} style={{ margin: '8px 0' }}>
@@ -255,7 +251,7 @@ const PlotPredictPage: React.FC = () => {
                                             </Paragraph>
                                             <div style={{ marginBottom: 8 }}>
                                                 <Text type="secondary" style={{ fontSize: 12 }}>
-                                                    Probability:
+                                                    概率：
                                                 </Text>
                                                 <Progress
                                                     percent={prophecy.probability}
@@ -270,13 +266,13 @@ const PlotPredictPage: React.FC = () => {
                                                 icon={<EyeOutlined />}
                                                 onClick={() => handleViewProphecy(prophecy)}
                                             >
-                                                View
+                                                查看
                                             </Button>
                                             <Button
                                                 icon={<EditOutlined />}
-                                                onClick={() => handleInterveneProphecy(prophecy)}
+                                                onClick={() => message.info('预言修改功能开发中')}
                                             >
-                                                Modify
+                                                修改
                                             </Button>
                                             {!prophecy.isAdopted && (
                                                 <Button
@@ -288,7 +284,7 @@ const PlotPredictPage: React.FC = () => {
                                                         border: 'none'
                                                     }}
                                                 >
-                                                    Adopt
+                                                    采用
                                                 </Button>
                                             )}
                                         </Space>
@@ -302,30 +298,28 @@ const PlotPredictPage: React.FC = () => {
 
             {prophecies.length === 0 && !generating && (
                 <Empty
-                    description="No prophecies yet. Click the button above to generate predictions."
+                    description="暂无预言，点击上方按钮生成预测"
                     style={{ marginTop: 40 }}
                 />
             )}
 
             <Modal
-                title={`Prophecy: ${selectedProphecy?.title}`}
+                title={`预言详情：${selectedProphecy?.title}`}
                 open={detailVisible}
                 onCancel={() => setDetailVisible(false)}
                 footer={[
                     <Button key="close" onClick={() => setDetailVisible(false)}>
-                        Close
+                        关闭
                     </Button>,
                     <Button
                         key="modify"
                         icon={<EditOutlined />}
                         onClick={() => {
                             setDetailVisible(false);
-                            if (selectedProphecy) {
-                                handleInterveneProphecy(selectedProphecy);
-                            }
+                            message.info('预言修改功能开发中');
                         }}
                     >
-                        Modify
+                        修改
                     </Button>,
                     selectedProphecy && !selectedProphecy.isAdopted && (
                         <Button
@@ -343,7 +337,7 @@ const PlotPredictPage: React.FC = () => {
                                 border: 'none'
                             }}
                         >
-                            Adopt This Prophecy
+                            采用此预言
                         </Button>
                     )
                 ]}
@@ -354,14 +348,14 @@ const PlotPredictPage: React.FC = () => {
                         <div style={{ marginBottom: 16 }}>
                             <Space>
                                 <Tag color={endingTypeMap[selectedProphecy.endingType]?.color || 'blue'}>
-                                    {endingTypeMap[selectedProphecy.endingType]?.emoji} 
+                                    {endingTypeMap[selectedProphecy.endingType]?.emoji}
                                     {endingTypeMap[selectedProphecy.endingType]?.text}
                                 </Tag>
                             </Space>
                         </div>
 
                         <div style={{ marginBottom: 16 }}>
-                            <Text strong>Probability:</Text>
+                            <Text strong>概率：</Text>
                             <Progress
                                 percent={selectedProphecy.probability}
                                 strokeColor="#f5576c"
@@ -371,7 +365,7 @@ const PlotPredictPage: React.FC = () => {
                         <Divider />
 
                         <div style={{ marginBottom: 16 }}>
-                            <Text strong>Prophecy Content:</Text>
+                            <Text strong>预言内容：</Text>
                             <Paragraph style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
                                 {selectedProphecy.content}
                             </Paragraph>
@@ -379,7 +373,7 @@ const PlotPredictPage: React.FC = () => {
 
                         {selectedProphecy.keyFactors && (
                             <div style={{ marginBottom: 16 }}>
-                                <Text strong>Key Factors:</Text>
+                                <Text strong>关键因素：</Text>
                                 <div style={{ marginTop: 8 }}>
                                     {JSON.parse(selectedProphecy.keyFactors || '[]').map(
                                         (factor: string, idx: number) => (
