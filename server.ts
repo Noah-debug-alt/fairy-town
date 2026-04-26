@@ -2259,18 +2259,23 @@ ${contextMessages}
                 return
               }
 
-              // Get plots and characters
+              // Get plots and characters (include prophecy-sourced plots for context)
               const plots = await prisma.plot.findMany({
-                where: { novelId, source: 'original' },
+                where: { novelId },
                 orderBy: [{ chapterIndex: 'asc' }, { sceneIndex: 'asc' }],
-                take: 10
+                take: 15
               })
 
               const characters = await prisma.character.findMany({ where: { novelId } })
 
               // Generate prophecies using LLM
+              // Note: Old prophecies are kept, allowing multiple prediction batches
+              // Each batch is identified by basedOnPlotIds for mutual exclusion within the same batch
               const { generateProphecies } = await import('./utils/prophecy')
               const prophecyData = await generateProphecies(novel, plots, characters)
+
+              // Generate a unique batch ID for this prediction batch
+              const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
               // Save prophecies to database
               const savedProphecies = []
@@ -2285,6 +2290,7 @@ ${contextMessages}
                     keyFactors: JSON.stringify(prophecy.keyFactors || []),
                     involvedCharacterIds: JSON.stringify(prophecy.involvedCharacterIds || []),
                     basedOnPlotIds: JSON.stringify(plots.map(p => p.id)),
+                    batchId,
                     isAdopted: false
                   }
                 })
@@ -2304,6 +2310,7 @@ ${contextMessages}
                     endingType: p.endingType,
                     keyFactors: p.keyFactors,
                     involvedCharacterIds: p.involvedCharacterIds,
+                    batchId: p.batchId,
                     isAdopted: p.isAdopted
                   }))
                 }
@@ -2332,6 +2339,38 @@ ${contextMessages}
               await prisma.$disconnect()
               res.writeHead(404, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 404, message: 'Prophecy not found' }))
+              return
+            }
+
+            // 如果当前预言已经被采用，返回提示
+            if (prophecy.isAdopted) {
+              await prisma.$disconnect()
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 400,
+                message: 'This prophecy has already been adopted'
+              }))
+              return
+            }
+
+            // 检查同一批次是否已有其他预言被采用
+            // 同一批预言互斥，但不同批次的预言可以分别采用
+            const existingAdoptedInSameBatch = await prisma.prophecy.findFirst({
+              where: {
+                novelId: prophecy.novelId,
+                batchId: prophecy.batchId,
+                isAdopted: true,
+                id: { not: prophecyId }
+              }
+            })
+
+            if (existingAdoptedInSameBatch) {
+              await prisma.$disconnect()
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 400,
+                message: `Cannot adopt this prophecy: Another prophecy "${existingAdoptedInSameBatch.title}" from the same prediction batch has already been adopted. You can generate new predictions based on updated plots to adopt different prophecies.`
+              }))
               return
             }
 

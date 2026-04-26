@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { Character, Memory } from '@prisma/client';
+﻿﻿﻿﻿import { Character, Memory } from '@prisma/client';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const DEFAULT_MODEL = process.env.LLM_MODEL || 'qwen3:4b';
@@ -139,6 +139,35 @@ export async function callLLM(
     console.warn('Ollama服务未运行，切换到Mock模式');
     return generateMockResponse(messages);
   }
+}
+
+// 简单的chat接口，用于预言生成等功能
+export async function chat(
+  prompt: string,
+  options?: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  }
+): Promise<string> {
+  const messages: LLMMessage[] = [
+    { role: 'user', content: prompt }
+  ];
+  return callLLM(messages, options);
+}
+
+// 获取LLM模块，用于预言生成等功能
+export async function getLlmModule() {
+  return {
+    chat,
+    callLLM,
+    generateEmbedding,
+    generateReflectionContent,
+    generateCharacterResponse,
+    generateAction,
+    analyzeCommand,
+    analyzeNovel,
+  };
 }
 
 export function buildCharacterSystemPrompt(character: Character & { memories?: Memory[] }): string {

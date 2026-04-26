@@ -292,12 +292,14 @@ model Prophecy {
   keyFactors           String    // JSON: 关键因素
   involvedCharacterIds String    // JSON: 涉及角色ID
   basedOnPlotIds       String    // JSON: 基于哪些情节
+  batchId              String    @default("legacy") // 批次ID，用于区分不同批次的预言
   isAdopted            Boolean   @default(false)  // 是否被采用
   createdAt            DateTime  @default(now())
   novel                Novel     @relation(fields: [novelId], references: [id])
 
   @@index([novelId])
   @@index([isAdopted])
+  @@index([batchId])
 }
 
 // 情节干预记录模型

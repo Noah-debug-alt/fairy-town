@@ -4,6 +4,9 @@
 import { Novel, Plot, Character } from '@prisma/client';
 import { getLlmModule } from '../llm/index';
 
+// 预言生成使用的模型配置
+const PROPHECY_MODEL = process.env.PROPHECY_MODEL || 'qwen3:8b';
+
 interface ProphecyData {
     title: string;
     content: string;
@@ -78,8 +81,9 @@ export async function generateProphecies(
             .replace('{existingPlots}', plotsText)
             .replace('{characters}', charactersText);
 
-        // Call LLM
-        const response = await llm.chat(prompt);
+        // Call LLM with qwen3:8b model
+        console.log(`[generateProphecies] Using model: ${PROPHECY_MODEL}`);
+        const response = await llm.chat(prompt, { model: PROPHECY_MODEL, temperature: 0.7 });
         
         // Parse response
         const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -204,7 +208,9 @@ Output format (JSON):
 
 Output only the JSON, no additional text.`;
 
-        const response = await llm.chat(prompt);
+        // Call LLM with qwen3:8b model
+        console.log(`[convertProphecyToPlots] Using model: ${PROPHECY_MODEL}`);
+        const response = await llm.chat(prompt, { model: PROPHECY_MODEL, temperature: 0.7 });
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         
         if (!jsonMatch) {
@@ -283,7 +289,9 @@ Output format (JSON):
 
 Output only the JSON, no additional text.`;
 
-        const response = await llm.chat(fullPrompt);
+        // Call LLM with qwen3:8b model
+        console.log(`[generatePlotRewrite] Using model: ${PROPHECY_MODEL}`);
+        const response = await llm.chat(fullPrompt, { model: PROPHECY_MODEL, temperature: 0.7 });
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         
         if (!jsonMatch) {
@@ -343,7 +351,9 @@ Output format (JSON):
 
 Output only the JSON, no additional text.`;
 
-        const response = await llm.chat(fullPrompt);
+        // Call LLM with qwen3:8b model
+        console.log(`[generatePlotBranches] Using model: ${PROPHECY_MODEL}`);
+        const response = await llm.chat(fullPrompt, { model: PROPHECY_MODEL, temperature: 0.7 });
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         
         if (!jsonMatch) {
