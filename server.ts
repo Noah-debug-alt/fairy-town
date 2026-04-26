@@ -2075,6 +2075,259 @@ ${contextMessages}
           return
         }
 
+        // GET /api/town/:novelId/progress - Get simulation progress
+        if (path.match(/^\/api\/town\/\d+\/progress$/) && req.method === 'GET') {
+          const novelId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            const townStatus = await prisma.townStatus.findUnique({
+              where: { novelId }
+            })
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                currentPlotIndex: townStatus?.currentPlotIndex || 0,
+                currentDialogueIndex: townStatus?.currentDialogueIndex || 0
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: 'Failed to get progress: ' + err.message }))
+          }
+          return
+        }
+
+        // GET /api/novel/:id/plots - Get plot list
+        if (path.match(/^\/api\/novel\/\d+\/plots$/) && req.method === 'GET') {
+          const novelId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            const plots = await prisma.plot.findMany({
+              where: { novelId },
+              orderBy: [{ chapterIndex: 'asc' }, { sceneIndex: 'asc' }]
+            })
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                plots: plots.map(p => ({
+                  id: p.id,
+                  novelId: p.novelId,
+                  chapterIndex: p.chapterIndex,
+                  sceneIndex: p.sceneIndex,
+                  title: p.title,
+                  content: p.content,
+                  dialogueContent: p.dialogueContent,
+                  narrationContent: p.narrationContent,
+                  location: p.location,
+                  involvedCharacterIds: p.involvedCharacterIds,
+                  isCompleted: p.isCompleted,
+                  source: p.source,
+                  completedAt: p.completedAt,
+                  createdAt: p.createdAt
+                }))
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: 'Failed to get plots: ' + err.message }))
+          }
+          return
+        }
+
+        // GET /api/prophecy/:novelId/list - Get prophecy list
+        if (path.match(/^\/api\/prophecy\/\d+\/list$/) && req.method === 'GET') {
+          const novelId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            const prophecies = await prisma.prophecy.findMany({
+              where: { novelId },
+              orderBy: { createdAt: 'desc' }
+            })
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                prophecies: prophecies.map(p => ({
+                  id: p.id,
+                  title: p.title,
+                  content: p.content,
+                  probability: p.probability,
+                  endingType: p.endingType,
+                  keyFactors: p.keyFactors,
+                  involvedCharacterIds: p.involvedCharacterIds,
+                  isAdopted: p.isAdopted,
+                  createdAt: p.createdAt
+                }))
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: 'Failed to get prophecies: ' + err.message }))
+          }
+          return
+        }
+
+        // POST /api/prophecy/:novelId/generate - Generate prophecies
+        if (path.match(/^\/api\/prophecy\/\d+\/generate$/) && req.method === 'POST') {
+          const novelId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              // Get novel data
+              const novel = await prisma.novel.findUnique({ where: { id: novelId } })
+              if (!novel) {
+                await prisma.$disconnect()
+                res.writeHead(404, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 404, message: 'Novel not found' }))
+                return
+              }
+
+              // Get plots and characters
+              const plots = await prisma.plot.findMany({
+                where: { novelId, source: 'original' },
+                orderBy: [{ chapterIndex: 'asc' }, { sceneIndex: 'asc' }],
+                take: 10
+              })
+
+              const characters = await prisma.character.findMany({ where: { novelId } })
+
+              // Generate prophecies using LLM
+              const { generateProphecies } = await import('./utils/prophecy')
+              const prophecyData = await generateProphecies(novel, plots, characters)
+
+              // Save prophecies to database
+              const savedProphecies = []
+              for (const prophecy of prophecyData) {
+                const saved = await prisma.prophecy.create({
+                  data: {
+                    novelId,
+                    title: prophecy.title,
+                    content: prophecy.content,
+                    probability: prophecy.probability,
+                    endingType: prophecy.endingType,
+                    keyFactors: JSON.stringify(prophecy.keyFactors || []),
+                    involvedCharacterIds: JSON.stringify(prophecy.involvedCharacterIds || []),
+                    basedOnPlotIds: JSON.stringify(plots.map(p => p.id)),
+                    isAdopted: false
+                  }
+                })
+                savedProphecies.push(saved)
+              }
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  prophecies: savedProphecies.map(p => ({
+                    id: p.id,
+                    title: p.title,
+                    content: p.content,
+                    probability: p.probability,
+                    endingType: p.endingType,
+                    keyFactors: p.keyFactors,
+                    involvedCharacterIds: p.involvedCharacterIds,
+                    isAdopted: p.isAdopted
+                  }))
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: 'Failed to generate prophecies: ' + err.message }))
+            }
+          })
+          return
+        }
+
+        // POST /api/prophecy/:id/adopt - Adopt a prophecy
+        if (path.match(/^\/api\/prophecy\/\d+\/adopt$/) && req.method === 'POST') {
+          const prophecyId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            const prophecy = await prisma.prophecy.findUnique({
+              where: { id: prophecyId }
+            })
+
+            if (!prophecy) {
+              await prisma.$disconnect()
+              res.writeHead(404, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 404, message: 'Prophecy not found' }))
+              return
+            }
+
+            // Mark prophecy as adopted
+            await prisma.prophecy.update({
+              where: { id: prophecyId },
+              data: { isAdopted: true }
+            })
+
+            // Get max chapter index
+            const maxPlot = await prisma.plot.aggregate({
+              where: { novelId: prophecy.novelId },
+              _max: { chapterIndex: true }
+            })
+
+            const newChapterIndex = (maxPlot._max.chapterIndex || 0) + 1
+
+            // Create a new plot from prophecy
+            const newPlot = await prisma.plot.create({
+              data: {
+                novelId: prophecy.novelId,
+                chapterIndex: newChapterIndex,
+                sceneIndex: 1,
+                title: prophecy.title,
+                content: prophecy.content,
+                dialogueContent: '[]',
+                narrationContent: prophecy.content,
+                location: '',
+                involvedCharacterIds: prophecy.involvedCharacterIds,
+                source: 'prophecy',
+                prophecyId: prophecyId,
+                isCompleted: false
+              }
+            })
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                plot: newPlot,
+                message: 'Prophecy adopted successfully'
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: 'Failed to adopt prophecy: ' + err.message }))
+          }
+          return
+        }
+
       } catch (err: ApiError) {
         console.error('API Error:', err)
         res.writeHead(500, { 'Content-Type': 'application/json' })
