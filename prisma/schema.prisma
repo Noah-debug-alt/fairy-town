@@ -43,6 +43,7 @@ model Novel {
   scenes       Scene[]
   townEvents   TownEvent[]
   townStatus   TownStatus?
+  prophecies   Prophecy[]
 }
 
 model Character {
@@ -200,9 +201,20 @@ model Plot {
   location             String    @default("")
   isCompleted          Boolean   @default(false)
   completedAt          DateTime?
+  // 情节来源：original(原小说), prophecy(预言), modified(修改)
+  source               String    @default("original")
+  // 如果是预言情节，关联的预言ID
+  prophecyId           Int?
+  // 如果是修改的情节，关联的原情节ID
+  parentPlotId         Int?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   novel                Novel     @relation(fields: [novelId], references: [id])
+  interventions        PlotIntervention[]
+
+  @@index([novelId])
+  @@index([source])
+  @@index([prophecyId])
 }
 
 model Scene {
@@ -245,6 +257,9 @@ model TownStatus {
   speed          Int      @default(1)
   currentTime    DateTime @default(now())
   lastUpdateTime DateTime @default(now())
+  // 模拟进度保存
+  currentPlotIndex     Int      @default(0)
+  currentDialogueIndex Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   novel          Novel    @relation(fields: [novelId], references: [id])
@@ -263,5 +278,39 @@ model MemoryImportanceHistory {
   memory        Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
 
   @@index([memoryId])
+  @@index([createdAt])
+}
+
+// 预言模型
+model Prophecy {
+  id                   Int       @id @default(autoincrement())
+  novelId              Int
+  title                String
+  content              String    // 预言概述
+  probability          Int       // 概率 0-100
+  endingType           String    // good, bad, hidden, tragic
+  keyFactors           String    // JSON: 关键因素
+  involvedCharacterIds String    // JSON: 涉及角色ID
+  basedOnPlotIds       String    // JSON: 基于哪些情节
+  isAdopted            Boolean   @default(false)  // 是否被采用
+  createdAt            DateTime  @default(now())
+  novel                Novel     @relation(fields: [novelId], references: [id])
+
+  @@index([novelId])
+  @@index([isAdopted])
+}
+
+// 情节干预记录模型
+model PlotIntervention {
+  id                Int       @id @default(autoincrement())
+  plotId            Int
+  interventionType  String    // manual, ai_assisted, branch_select
+  originalContent   String    // 原始内容 JSON
+  newContent        String    // 新内容 JSON
+  reason            String?   // 干预原因
+  createdAt         DateTime  @default(now())
+  plot              Plot      @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@index([plotId])
   @@index([createdAt])
 }
