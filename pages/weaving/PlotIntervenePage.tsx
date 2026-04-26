@@ -157,9 +157,18 @@ const PlotIntervenePage: React.FC = () => {
                                         : '1px solid #f0f0f0'
                                 }}
                             >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <Space>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'flex-start',
+                                    gap: 16
+                                }}>
+                                    <div style={{ 
+                                        flex: '1 1 auto', 
+                                        minWidth: 0,
+                                        overflow: 'hidden'
+                                    }}>
+                                        <Space wrap>
                                             <Badge status={status.color as 'success' | 'processing' | 'default'} />
                                             <Text strong style={{ fontSize: 16 }}>
                                                 第{plot.chapterIndex}章 第{plot.sceneIndex}节
@@ -167,22 +176,38 @@ const PlotIntervenePage: React.FC = () => {
                                             {getSourceTag(plot.source)}
                                             {status.icon && <Tag color={status.color}>{status.text}</Tag>}
                                         </Space>
-                                        <Title level={4} style={{ margin: '8px 0' }}>
+                                        <Title level={4} style={{ margin: '8px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {plot.title}
                                         </Title>
-                                        <Text type="secondary" ellipsis style={{ display: 'block' }}>
-                                            {plot.content || plot.narrationContent || '暂无描述'}
-                                        </Text>
+                                        <div style={{ 
+                                            overflow: 'hidden', 
+                                            textOverflow: 'ellipsis', 
+                                            display: '-webkit-box',
+                                            WebkitLineClamp: 2,
+                                            WebkitBoxOrient: 'vertical',
+                                            lineHeight: 1.6
+                                        }}>
+                                            <Text type="secondary">
+                                                {plot.content || plot.narrationContent || '暂无描述'}
+                                            </Text>
+                                        </div>
                                         {plot.location && (
-                                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                            <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
                                                 地点：{plot.location}
                                             </Text>
                                         )}
                                     </div>
-                                    <Space direction="vertical">
+                                    <div style={{ 
+                                        flex: '0 0 auto', 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        gap: 8,
+                                        marginLeft: 'auto'
+                                    }}>
                                         <Button
                                             icon={<EyeOutlined />}
                                             onClick={() => handleViewDetail(plot)}
+                                            style={{ width: '100%' }}
                                         >
                                             查看
                                         </Button>
@@ -190,10 +215,11 @@ const PlotIntervenePage: React.FC = () => {
                                             type="primary"
                                             icon={<EditOutlined />}
                                             onClick={() => handleIntervene(plot)}
+                                            style={{ width: '100%' }}
                                         >
                                             干预
                                         </Button>
-                                    </Space>
+                                    </div>
                                 </div>
                             </Card>
                         );
