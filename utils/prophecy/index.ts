@@ -2,7 +2,7 @@
 // Generate future plot predictions based on existing plots
 
 import { Novel, Plot, Character } from '@prisma/client';
-import { getLlmModule } from './llm/index';
+import { getLlmModule } from '../llm/index';
 
 interface ProphecyData {
     title: string;
