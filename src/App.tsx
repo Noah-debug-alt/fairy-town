@@ -7,6 +7,7 @@ import SceneDetailPage from '../pages/town/scene/[sceneId]';
 import CharacterDetailPage from '../pages/town/character/[characterId]';
 import PlotWeavingPage from '../pages/weaving/PlotWeavingPage';
 import PlotIntervenePage from '../pages/weaving/PlotIntervenePage';
+import PlotInterveneDetailPage from '../pages/weaving/PlotInterveneDetailPage';
 import PlotPredictPage from '../pages/weaving/PlotPredictPage';
 import './App.css';
 
@@ -23,6 +24,7 @@ function AppRoutes() {
       <Route path="/town/:novelId/character/:characterId" element={<CharacterDetailPage />} />
       <Route path="/weaving" element={<PlotWeavingPage />} />
       <Route path="/weaving/:novelId/intervene" element={<PlotIntervenePage />} />
+      <Route path="/weaving/:novelId/intervene/:plotId" element={<PlotInterveneDetailPage />} />
       <Route path="/weaving/:novelId/predict" element={<PlotPredictPage />} />
     </Routes>
   );

@@ -2328,6 +2328,226 @@ ${contextMessages}
           return
         }
 
+        // GET /api/plot/:id - Get single plot
+        if (path.match(/^\/api\/plot\/\d+$/) && req.method === 'GET') {
+          const plotId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            const plot = await prisma.plot.findUnique({
+              where: { id: plotId }
+            })
+
+            if (!plot) {
+              await prisma.$disconnect()
+              res.writeHead(404, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 404, message: 'Plot not found' }))
+              return
+            }
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                id: plot.id,
+                novelId: plot.novelId,
+                chapterIndex: plot.chapterIndex,
+                sceneIndex: plot.sceneIndex,
+                title: plot.title,
+                content: plot.content,
+                dialogueContent: plot.dialogueContent,
+                narrationContent: plot.narrationContent,
+                location: plot.location,
+                involvedCharacterIds: plot.involvedCharacterIds,
+                isCompleted: plot.isCompleted,
+                source: plot.source,
+                completedAt: plot.completedAt,
+                createdAt: plot.createdAt
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: 'Failed to get plot: ' + err.message }))
+          }
+          return
+        }
+
+        // PUT /api/plot/:id - Update plot (intervention)
+        if (path.match(/^\/api\/plot\/\d+$/) && req.method === 'PUT') {
+          const plotId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              const data = JSON.parse(body)
+              const { title, content, narrationContent, dialogueContent, location, involvedCharacterIds, source } = data
+
+              // Get original plot for history
+              const originalPlot = await prisma.plot.findUnique({
+                where: { id: plotId }
+              })
+
+              if (!originalPlot) {
+                await prisma.$disconnect()
+                res.writeHead(404, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 404, message: 'Plot not found' }))
+                return
+              }
+
+              // Update plot
+              const updatedPlot = await prisma.plot.update({
+                where: { id: plotId },
+                data: {
+                  title: title || originalPlot.title,
+                  content: content || originalPlot.content,
+                  narrationContent: narrationContent || originalPlot.narrationContent,
+                  dialogueContent: dialogueContent || originalPlot.dialogueContent,
+                  location: location || originalPlot.location,
+                  involvedCharacterIds: involvedCharacterIds || originalPlot.involvedCharacterIds,
+                  source: source || 'modified'
+                }
+              })
+
+              // Record intervention history
+              await prisma.plotIntervention.create({
+                data: {
+                  plotId,
+                  interventionType: 'manual',
+                  originalContent: JSON.stringify({
+                    title: originalPlot.title,
+                    narrationContent: originalPlot.narrationContent,
+                    dialogueContent: originalPlot.dialogueContent
+                  }),
+                  newContent: JSON.stringify({
+                    title: updatedPlot.title,
+                    narrationContent: updatedPlot.narrationContent,
+                    dialogueContent: updatedPlot.dialogueContent
+                  }),
+                  reason: 'Manual intervention'
+                }
+              })
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  plot: updatedPlot,
+                  message: 'Plot updated successfully'
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: 'Failed to update plot: ' + err.message }))
+            }
+          })
+          return
+        }
+
+        // POST /api/plot/:id/ai-rewrite - AI assisted rewrite
+        if (path.match(/^\/api\/plot\/\d+\/ai-rewrite$/) && req.method === 'POST') {
+          const plotId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              const data = JSON.parse(body)
+              const { prompt } = data
+
+              // Get plot
+              const plot = await prisma.plot.findUnique({
+                where: { id: plotId }
+              })
+
+              if (!plot) {
+                await prisma.$disconnect()
+                res.writeHead(404, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 404, message: 'Plot not found' }))
+                return
+              }
+
+              // Get characters
+              const characters = await prisma.character.findMany({
+                where: { novelId: plot.novelId }
+              })
+
+              // Generate AI rewrite
+              const { generatePlotRewrite } = await import('./utils/prophecy')
+              const dialogues = await generatePlotRewrite(plot, characters, prompt)
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  dialogues,
+                  message: 'AI rewrite generated successfully'
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: 'Failed to generate AI rewrite: ' + err.message }))
+            }
+          })
+          return
+        }
+
+        // POST /api/plot/:id/generate-branches - Generate branch options
+        if (path.match(/^\/api\/plot\/\d+\/generate-branches$/) && req.method === 'POST') {
+          const plotId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            // Get plot
+            const plot = await prisma.plot.findUnique({
+              where: { id: plotId }
+            })
+
+            if (!plot) {
+              await prisma.$disconnect()
+              res.writeHead(404, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 404, message: 'Plot not found' }))
+              return
+            }
+
+            // Get characters
+            const characters = await prisma.character.findMany({
+              where: { novelId: plot.novelId }
+            })
+
+            // Generate branches
+            const { generatePlotBranches } = await import('./utils/prophecy')
+            const branches = await generatePlotBranches(plot, characters)
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                branches,
+                message: 'Branches generated successfully'
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: 'Failed to generate branches: ' + err.message }))
+          }
+          return
+        }
+
       } catch (err: ApiError) {
         console.error('API Error:', err)
         res.writeHead(500, { 'Content-Type': 'application/json' })

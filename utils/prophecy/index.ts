@@ -244,3 +244,139 @@ Output only the JSON, no additional text.`;
         }];
     }
 }
+
+// AI assisted plot rewrite
+export async function generatePlotRewrite(
+    plot: Plot,
+    characters: Character[],
+    prompt: string
+): Promise<{ speaker: string; content: string; emotion?: string }[]> {
+    try {
+        const llm = await getLlmModule();
+
+        const charactersText = characters.map(c => c.name).join(', ');
+
+        const fullPrompt = `You are a dialogue rewrite assistant. Based on the user's requirements, rewrite the following dialogue content.
+
+Original Plot: ${plot.title}
+Original Narration: ${plot.narrationContent || 'None'}
+Original Dialogue: ${plot.dialogueContent || 'None'}
+Available Characters: ${charactersText}
+
+User Requirements: ${prompt}
+
+Please generate new dialogue content. Each line should include:
+- Speaker name
+- Dialogue content
+- Optional emotion
+
+Output format (JSON):
+{
+  "dialogues": [
+    {
+      "speaker": "Character Name",
+      "content": "Dialogue content",
+      "emotion": "emotion (optional)"
+    }
+  ]
+}
+
+Output only the JSON, no additional text.`;
+
+        const response = await llm.chat(fullPrompt);
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+            throw new Error('Failed to parse rewrite response');
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        return parsed.dialogues || [];
+    } catch (error) {
+        console.error('Error generating plot rewrite:', error);
+        // Return empty dialogues if generation fails
+        return [];
+    }
+}
+
+// Generate plot branch options
+export async function generatePlotBranches(
+    plot: Plot,
+    characters: Character[]
+): Promise<{ label: string; description: string; dialogues: { speaker: string; content: string }[] }[]> {
+    try {
+        const llm = await getLlmModule();
+
+        const charactersText = characters.map(c => `${c.name}: ${c.description || 'No description'}`).join('\n');
+
+        const fullPrompt = `You are a plot branch generator. Based on the current plot, generate 3 different development branches.
+
+Current Plot: ${plot.title}
+Narration: ${plot.narrationContent || 'None'}
+Current Dialogue: ${plot.dialogueContent || 'None'}
+
+Characters:
+${charactersText}
+
+Generate 3 different branches:
+1. Branch A: A continuation that maintains the original tone
+2. Branch B: A twist that introduces tension or conflict
+3. Branch C: An unexpected turn of events
+
+For each branch, provide:
+- Label (short title)
+- Description (brief explanation)
+- Sample dialogues (3-5 lines)
+
+Output format (JSON):
+{
+  "branches": [
+    {
+      "label": "Branch Title",
+      "description": "Brief description",
+      "dialogues": [
+        { "speaker": "Character", "content": "Dialogue content" }
+      ]
+    }
+  ]
+}
+
+Output only the JSON, no additional text.`;
+
+        const response = await llm.chat(fullPrompt);
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+            throw new Error('Failed to parse branch response');
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        return parsed.branches || [];
+    } catch (error) {
+        console.error('Error generating plot branches:', error);
+        // Return default branches if generation fails
+        return [
+            {
+                label: 'Continue as Planned',
+                description: 'The story continues according to the original direction',
+                dialogues: [
+                    { speaker: 'Character', content: 'Let us continue on our journey.' }
+                ]
+            },
+            {
+                label: 'Unexpected Encounter',
+                description: 'A new character appears and changes the situation',
+                dialogues: [
+                    { speaker: 'Stranger', content: 'Excuse me, may I join you?' }
+                ]
+            },
+            {
+                label: 'Hidden Secret',
+                description: 'A secret is revealed that changes everything',
+                dialogues: [
+                    { speaker: 'Character', content: 'I have something to tell you...' }
+                ]
+            }
+        ];
+    }
+}
