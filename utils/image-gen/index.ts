@@ -25,6 +25,18 @@ const SCENE_STYLE = 'isometric view, fairy tale town, Studio Ghibli inspired, wa
 
 const CHARACTER_STYLE = 'anime style illustration, fairy tale character, warm pastel colors, Studio Ghibli inspired, detailed face, expressive eyes, clean simple background, upper body portrait, no text, no watermark, high quality, masterpiece';
 
+// 人物专用的Prompt前缀 - 强制模型生成人物肖像
+const CHARACTER_PROMPT_PREFIX = 'portrait of a single character, upper body, facing viewer, looking at camera, ';
+
+// 人物专用的负面提示词 - 防止生成场景、背景等非人物元素
+const CHARACTER_NEGATIVE_PROMPT = 'landscape, scenery, environment, background, building, house, room, furniture, no people, multiple people, crowd, group, full body, low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy, bad face, extra limbs, missing limbs, disfigured';
+
+// 场景专用的负面提示词 - 防止生成人物
+const SCENE_NEGATIVE_PROMPT = 'person, human, face, character, portrait, people, crowd, group, individual, low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy';
+
+// 通用的基础负面提示词（作为fallback）
+const BASE_NEGATIVE_PROMPT = 'low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy';
+
 export function buildScenePrompt(sceneName: string, sceneDescription: string, sceneType: string): string {
     const typeDescriptions: Record<string, string> = {
         public: 'a grand town square with a central fountain, stone benches, flower beds, and a clock tower',
@@ -63,24 +75,75 @@ export function buildScenePrompt(sceneName: string, sceneDescription: string, sc
     return prompt;
 }
 
-export function buildCharacterPrompt(characterName: string, characterDescription: string): string {
-    let prompt = '';
+export function buildCharacterPrompt(characterName: string, characterDescription: string, characterAppearance?: string): string {
+    // 构建Prompt结构: [前缀] + [外貌描述] + [名字] + [样式]
+    // 前缀强制模型生成人物肖像，避免生成场景
 
-    if (characterDescription && characterDescription.length > 5) {
-        const descShort = characterDescription.length > 200
-            ? characterDescription.substring(0, 200)
-            : characterDescription;
-        prompt = descShort;
+    let appearancePart = '';
+
+    // 优先使用传入的外貌描述
+    if (characterAppearance && characterAppearance.length > 5) {
+        appearancePart = characterAppearance.substring(0, 200);
+    } else if (characterDescription && characterDescription.length > 5) {
+        // 如果没有外貌描述，尝试从角色描述中提取外貌相关内容
+        appearancePart = extractAppearanceKeywords(characterDescription);
     } else {
-        prompt = 'a mysterious fairy tale character with an enigmatic presence';
+        // 默认外貌描述
+        appearancePart = 'mysterious fairy tale character with an enigmatic presence';
     }
 
-    if (characterName) {
-        prompt += `, named ${characterName}`;
-    }
-
+    // 构建完整Prompt: 前缀 + 外貌 + 名字 + 样式
+    let prompt = CHARACTER_PROMPT_PREFIX;
+    prompt += appearancePart;
+    prompt += `, named "${characterName}"`;
     prompt += `, ${CHARACTER_STYLE}`;
+
     return prompt;
+}
+
+// 从描述中提取外貌相关关键词的辅助函数
+function extractAppearanceKeywords(description: string): string {
+    // 外貌相关关键词列表（中英文）
+    const appearanceKeywords = [
+        // 年龄相关
+        'young', 'old', 'elderly', 'young man', 'old woman', '年幼', '年老', '老人', '少女', '少年', '中年',
+        // 发型发色
+        'hair', 'blonde', 'black hair', 'silver hair', 'long hair', 'short hair', 'white hair', 'brown hair',
+        '头发', '长发', '短发', '白发', '黑发', '金发',
+        // 眼睛
+        'eyes', 'blue eyes', 'brown eyes', 'green eyes', 'bright eyes', '眼睛', '眼神', '眼眸',
+        // 服装配饰
+        'wearing', 'dress', 'coat', 'hat', 'glasses', 'robe', 'cloak', 'armor', 'crown',
+        '穿着', '戴着', '帽子', '眼镜', '长袍', '披风', '盔甲', '王冠',
+        // 体态特征
+        'tall', 'short', 'thin', 'slim', 'fat', 'muscular', 'petite',
+        '高', '矮', '瘦', '胖', '苗条', '健壮', '娇小',
+        // 表情气质
+        'smile', 'angry', 'sad', 'happy', 'gentle', 'fierce', 'kind', 'stern',
+        '微笑', '愤怒', '悲伤', '开心', '温柔', '凶狠', '慈祥', '严肃',
+        // 肤色
+        'pale', 'tan', 'dark skin', 'fair skin', '苍白', '黝黑', '白皙'
+    ];
+
+    const sentences = description.split(/[，。,.\n]/);
+    const appearanceSentences: string[] = [];
+
+    for (const sentence of sentences) {
+        const lowerSentence = sentence.toLowerCase();
+        for (const keyword of appearanceKeywords) {
+            if (lowerSentence.includes(keyword.toLowerCase())) {
+                appearanceSentences.push(sentence.trim());
+                break;
+            }
+        }
+    }
+
+    if (appearanceSentences.length > 0) {
+        return appearanceSentences.join(', ').substring(0, 200);
+    }
+
+    // 如果没有提取到外貌关键词，返回原描述的前200字符
+    return description.substring(0, 200);
 }
 
 async function saveBase64Image(base64Data: string, prefix: string): Promise<string> {
@@ -98,7 +161,7 @@ async function saveBase64Image(base64Data: string, prefix: string): Promise<stri
     return `/generated/${uniqueName}`;
 }
 
-async function generateWithSiliconFlow(prompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
+async function generateWithSiliconFlow(prompt: string, negativePrompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
     if (!SILICONFLOW_API_KEY) {
         return { success: false, error: 'SiliconFlow API key not configured', prompt };
     }
@@ -113,7 +176,7 @@ async function generateWithSiliconFlow(prompt: string, width: number = 512, heig
             body: JSON.stringify({
                 model: SILICONFLOW_MODEL,
                 prompt,
-                negative_prompt: 'low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy',
+                negative_prompt: negativePrompt,  // 使用传入的负面提示词
                 image_size: `${width}x${height}`,
                 num_inference_steps: 20,
                 guidance_scale: 7.5,
@@ -147,14 +210,14 @@ async function generateWithSiliconFlow(prompt: string, width: number = 512, heig
     }
 }
 
-async function generateWithOllamaDiffuser(prompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
+async function generateWithOllamaDiffuser(prompt: string, negativePrompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
     try {
         const response = await fetch(`${OLLAMADIFFUSER_URL}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt,
-                negative_prompt: 'low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy',
+                negative_prompt: negativePrompt,  // 使用传入的负面提示词
                 width,
                 height,
                 model: OLLAMADIFFUSER_MODEL,
@@ -190,14 +253,14 @@ async function generateWithOllamaDiffuser(prompt: string, width: number = 512, h
     }
 }
 
-async function generateWithSDWebUI(prompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
+async function generateWithSDWebUI(prompt: string, negativePrompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
     try {
         const response = await fetch(`${SD_WEBUI_URL}/sdapi/v1/txt2img`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt,
-                negative_prompt: 'low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy',
+                negative_prompt: negativePrompt,  // 使用传入的负面提示词
                 width,
                 height,
                 steps: 25,
@@ -269,14 +332,14 @@ async function generateWithDALL_E(prompt: string): Promise<ImageGenResult> {
     }
 }
 
-async function generateWithDiffusers(prompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
+async function generateWithDiffusers(prompt: string, negativePrompt: string, width: number = 512, height: number = 512): Promise<ImageGenResult> {
     try {
         const response = await fetch(`${DIFFUSERS_SERVER_URL}/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt,
-                negative_prompt: 'low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy',
+                negative_prompt: negativePrompt,  // 使用传入的负面提示词
                 width,
                 height,
                 steps: 25,
@@ -326,6 +389,7 @@ function generateCanvasPlaceholder(name: string, sceneType: string, isCharacter:
 
 async function tryGenerateWithFallback(
     prompt: string,
+    negativePrompt: string,  // 新增：负面提示词参数
     width: number,
     height: number,
     name: string,
@@ -340,7 +404,7 @@ async function tryGenerateWithFallback(
                 signal: AbortSignal.timeout(3000),
             });
             if (checkResp.ok) {
-                const result = await generateWithOllamaDiffuser(prompt, width, height);
+                const result = await generateWithOllamaDiffuser(prompt, negativePrompt, width, height);
                 if (result.success) return result;
             }
         } catch {
@@ -348,7 +412,7 @@ async function tryGenerateWithFallback(
         }
 
         if (SILICONFLOW_API_KEY) {
-            const result = await generateWithSiliconFlow(prompt, width, height);
+            const result = await generateWithSiliconFlow(prompt, negativePrompt, width, height);
             if (result.success) return result;
             console.log('SiliconFlow failed, trying SD WebUI...');
         }
@@ -358,7 +422,7 @@ async function tryGenerateWithFallback(
                 signal: AbortSignal.timeout(3000),
             });
             if (checkResp.ok) {
-                const result = await generateWithSDWebUI(prompt, width, height);
+                const result = await generateWithSDWebUI(prompt, negativePrompt, width, height);
                 if (result.success) return result;
             }
         } catch {
@@ -375,22 +439,22 @@ async function tryGenerateWithFallback(
 
     switch (provider) {
         case 'diffusers': {
-            const result = await generateWithDiffusers(prompt, width, height);
+            const result = await generateWithDiffusers(prompt, negativePrompt, width, height);
             if (result.success) return result;
             return generateCanvasPlaceholder(name, sceneType, isCharacter);
         }
         case 'ollamadiffuser': {
-            const result = await generateWithOllamaDiffuser(prompt, width, height);
+            const result = await generateWithOllamaDiffuser(prompt, negativePrompt, width, height);
             if (result.success) return result;
             return generateCanvasPlaceholder(name, sceneType, isCharacter);
         }
         case 'siliconflow': {
-            const result = await generateWithSiliconFlow(prompt, width, height);
+            const result = await generateWithSiliconFlow(prompt, negativePrompt, width, height);
             if (result.success) return result;
             return generateCanvasPlaceholder(name, sceneType, isCharacter);
         }
         case 'sdwebui': {
-            const result = await generateWithSDWebUI(prompt, width, height);
+            const result = await generateWithSDWebUI(prompt, negativePrompt, width, height);
             if (result.success) return result;
             return generateCanvasPlaceholder(name, sceneType, isCharacter);
         }
@@ -412,15 +476,18 @@ export async function generateSceneImage(
     sceneType: string
 ): Promise<ImageGenResult> {
     const prompt = buildScenePrompt(sceneName, sceneDescription, sceneType);
-    return tryGenerateWithFallback(prompt, 512, 512, sceneName, sceneType, false);
+    // 使用场景专用的负面提示词，避免生成人物
+    return tryGenerateWithFallback(prompt, SCENE_NEGATIVE_PROMPT, 512, 512, sceneName, sceneType, false);
 }
 
 export async function generateCharacterImage(
     characterName: string,
-    characterDescription: string
+    characterDescription: string,
+    characterAppearance?: string  // 新增：外貌描述参数
 ): Promise<ImageGenResult> {
-    const prompt = buildCharacterPrompt(characterName, characterDescription);
-    return tryGenerateWithFallback(prompt, 384, 512, characterName, '', true);
+    const prompt = buildCharacterPrompt(characterName, characterDescription, characterAppearance);
+    // 使用人物专用的负面提示词，避免生成场景
+    return tryGenerateWithFallback(prompt, CHARACTER_NEGATIVE_PROMPT, 384, 512, characterName, '', true);
 }
 
 export async function generateAllImages(

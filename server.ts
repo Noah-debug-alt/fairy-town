@@ -2,6 +2,11 @@ import { createServer as createHttpServer } from 'http'
 import { createServer as createViteServer } from 'vite'
 import { IncomingMessage, ServerResponse } from 'http'
 
+// 设置终端编码为 UTF-8，解决中文乱码问题
+if (process.stdout.isTTY) {
+  process.stdout.setDefaultEncoding?.('utf8')
+}
+
 interface RequestWithBody extends IncomingMessage {
   body: string
 }
@@ -35,7 +40,7 @@ async function startServer() {
         return
       }
 
-      console.log('API请求:', req.method, path)
+      console.log('[API Request]', req.method, path)
 
       try {
         // POST /novel/upload
@@ -71,7 +76,7 @@ async function startServer() {
               res.writeHead(200, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 200, message: '上传成功', data: { id: novel.id } }))
             } catch (err: ApiError) {
-              console.error('上传失败:', err)
+              console.error('Upload failed:', err)
               res.writeHead(500, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 500, message: '服务器错误: ' + err.message }))
             }
@@ -265,7 +270,7 @@ async function startServer() {
             const elapsed = Date.now() - startTime
             deleteLog.push(`[删除完成] 耗时: ${elapsed}ms`)
 
-            console.log('========== 删除日志 ==========')
+            console.log('========== Delete Log ==========')
             deleteLog.forEach(log => console.log(log))
             console.log('==============================')
 
@@ -289,7 +294,7 @@ async function startServer() {
               try { db.close(); } catch (_e) { /* ignore close error */ }
             }
 
-            console.error('========== 删除失败日志 ==========')
+            console.error('========== Delete Failed Log ==========')
             deleteLog.forEach(log => console.error(log))
             console.error('===================================')
 
@@ -331,9 +336,9 @@ async function startServer() {
             const scenes = analysisResult.scenes || []
             const plots = analysisResult.plots || []
 
-            console.log('解析结果 - 角色数:', characters.length)
-            console.log('解析结果 - 场景数:', scenes.length)
-            console.log('解析结果 - 场景列表:', scenes)
+            console.log('Parse result - Characters:', characters.length)
+            console.log('Parse result - Scenes:', scenes.length)
+            console.log('Parse result - Scene list:', scenes)
 
             const createdCharacters: { id: number; name: string }[] = []
 
@@ -451,7 +456,7 @@ async function startServer() {
               const dbScenes = await prisma.scene.findMany({ where: { novelId: id, isActive: true } })
               const dbCharacters = await prisma.character.findMany({ where: { novelId: id } })
 
-              console.log('开始为小说生成图片，场景数:', dbScenes.length, '角色数:', dbCharacters.length)
+              console.log('Start generating images for novel, scenes:', dbScenes.length, 'characters:', dbCharacters.length)
 
               const imageResults = await generateAllImages(
                 dbScenes.map(s => ({ name: s.name, description: s.description || '', type: s.type })),
@@ -478,9 +483,9 @@ async function startServer() {
                 }
               }
 
-              console.log('图片生成完成')
+              console.log('Image generation completed')
             } catch (imgErr: ApiError) {
-              console.error('图片生成失败（不影响解析结果）:', imgErr.message)
+              console.error('Image generation failed (parsing result not affected):', imgErr.message)
             }
 
             // 修复：返回数据库中已更新图片的角色数据，而非LLM解析的原始数据
@@ -491,7 +496,7 @@ async function startServer() {
             res.end(JSON.stringify({ code: 200, message: '解析成功', data: { characters: dbCharactersForResponse, plots } }))
             return
           } catch (llmError: ApiError) {
-            console.error('LLM解析失败:', llmError)
+            console.error('LLM parsing failed:', llmError)
             await prisma.novel.update({
               where: { id },
               data: { parseStatus: 'FAILED' }
@@ -674,8 +679,8 @@ async function startServer() {
           const characters = await prisma.character.findMany({ where: { novelId } })
           const scenes = await prisma.scene.findMany({ where: { novelId, isActive: true } })
 
-          console.log('小镇数据 - 场景数:', scenes.length)
-          console.log('小镇数据 - 场景列表:', scenes)
+          console.log('Town data - Scenes:', scenes.length)
+          console.log('Town data - Scene list:', scenes)
 
           await prisma.$disconnect()
 
@@ -833,11 +838,11 @@ async function startServer() {
               if (isRunning) {
                 const { startTownSimulation } = await import('./utils/agent/town')
                 await startTownSimulation(prisma, novelId, speed || 1)
-                console.log(`小镇模拟已启动: novelId=${novelId}, speed=${speed}`)
+                console.log(`Town simulation started: novelId=${novelId}, speed=${speed}`)
               } else {
                 const { stopTownSimulation } = await import('./utils/agent/town')
                 stopTownSimulation()
-                console.log(`小镇模拟已停止`)
+                console.log(`Town simulation stopped`)
               }
 
               await prisma.$disconnect()
@@ -1009,7 +1014,7 @@ async function startServer() {
               res.writeHead(200, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 200, data: { response } }))
             } catch (err: ApiError) {
-              console.error('对话生成失败:', err)
+              console.error('Dialogue generation failed:', err)
               res.writeHead(500, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 500, message: '对话生成失败: ' + err.message }))
             }
@@ -1058,7 +1063,7 @@ async function startServer() {
         if (path.match(/^\/api\/character\/\d+\/memory\/stats$/) && req.method === 'GET') {
           const id = parseInt(path.split('/')[3])
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const stats = await memory.getMemoryStats(id)
 
@@ -1077,7 +1082,7 @@ async function startServer() {
           const minImportance = parseInt(urlObj.searchParams.get('minImportance') || '7')
           const limit = parseInt(urlObj.searchParams.get('limit') || '20')
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const importantMemories = await memory.getImportantMemories(id, minImportance, limit)
 
@@ -1107,7 +1112,7 @@ async function startServer() {
           const hours = parseInt(urlObj.searchParams.get('hours') || '24')
           const limit = parseInt(urlObj.searchParams.get('limit') || '20')
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const recentMemories = await memory.getRecentMemories(id, hours, limit)
 
@@ -1146,7 +1151,7 @@ async function startServer() {
                 return
               }
 
-              const { memory } = await import('./utils/memory')
+              const { memory } = await import('./utils/memory/index')
               const results = await memory.searchMemories(id, query, limit || 20)
 
               res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -1219,7 +1224,14 @@ async function startServer() {
                 importance: m.importance,
                 tags: JSON.parse(m.tags || '[]'),
                 timestamp: m.timestamp,
-                createdAt: m.createdAt
+                createdAt: m.createdAt,
+                // 新增字段：访问频率统计
+                accessCount: m.accessCount || 0,
+                lastAccessedAt: m.lastAccessedAt || null,
+                // 新增字段：用户自定义重要性
+                isManuallySet: m.isManuallySet || false,
+                manualSetBy: m.manualSetBy || null,
+                manualSetAt: m.manualSetAt || null
               })),
               pagination: {
                 page,
@@ -1236,7 +1248,7 @@ async function startServer() {
         if (path.match(/^\/api\/character\/\d+\/init-memory$/) && req.method === 'POST') {
           const id = parseInt(path.split('/')[3])
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const mem = await memory.getMemories(id, { limit: 1 })
           if (mem.length > 0) {
@@ -1289,7 +1301,7 @@ async function startServer() {
         if (path.match(/^\/api\/character\/\d+\/reflect$/) && req.method === 'POST') {
           const id = parseInt(path.split('/')[3])
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const mems = await memory.getMemories(id, { limit: 1 })
           if (mems.length === 0) {
@@ -1343,7 +1355,7 @@ async function startServer() {
           const urlObj = new URL(url, 'http://localhost')
           const limit = parseInt(urlObj.searchParams.get('limit') || '10')
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const reflections = await memory.getReflections(id, limit)
 
@@ -1601,7 +1613,7 @@ ${contextMessages}
                 }
               }))
             } catch (error: any) {
-              console.error('场景聊天生成失败:', error)
+              console.error('Scene chat generation failed:', error)
               res.writeHead(500, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 500, message: error.message || '生成回复失败' }))
             }
@@ -1615,7 +1627,7 @@ ${contextMessages}
           const urlObj = new URL(url, 'http://localhost')
           const limit = parseInt(urlObj.searchParams.get('limit') || '20')
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           const observations = await memory.getObservations(id, limit)
 
@@ -1662,7 +1674,7 @@ ${contextMessages}
                 return
               }
 
-              const { memory } = await import('./utils/memory')
+              const { memory } = await import('./utils/memory/index')
 
               const memoryRecord = await memory.writeMemory({
                 characterId,
@@ -1693,7 +1705,7 @@ ${contextMessages}
                 }
               }))
             } catch (err: ApiError) {
-              console.error('写入记忆失败:', err)
+              console.error('Failed to write memory:', err)
               res.writeHead(500, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ code: 500, message: '写入记忆失败: ' + err.message }))
             }
@@ -1705,7 +1717,7 @@ ${contextMessages}
         if (path.match(/^\/api\/memory\/\d+$/) && req.method === 'DELETE') {
           const id = parseInt(path.split('/')[2])
 
-          const { memory } = await import('./utils/memory')
+          const { memory } = await import('./utils/memory/index')
 
           try {
             await memory.deleteMemory(id)
@@ -1729,7 +1741,7 @@ ${contextMessages}
               const data = JSON.parse(body)
               const { content, importance, tags } = data
 
-              const { memory } = await import('./utils/memory')
+              const { memory } = await import('./utils/memory/index')
 
               const updated = await memory.updateMemory(id, {
                 content,
@@ -1754,6 +1766,88 @@ ${contextMessages}
               res.end(JSON.stringify({ code: 500, message: '更新记忆失败: ' + err.message }))
             }
           })
+          return
+        }
+
+        // PUT /api/memory/:id/importance - 用户手动设置记忆重要性
+        if (path.match(/^\/api\/memory\/\d+\/importance$/) && req.method === 'PUT') {
+          const memoryId = parseInt(path.split('/')[3])
+
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body)
+              const { importance, operator, reason } = data
+
+              if (importance === undefined || importance === null) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 400, message: '缺少重要性参数' }))
+                return
+              }
+
+              if (importance < 1 || importance > 10) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 400, message: '重要性值必须在 1-10 范围内' }))
+                return
+              }
+
+              const { memory } = await import('./utils/memory/index')
+              const result = await memory.setMemoryImportance(
+                memoryId,
+                importance,
+                operator || 'user',
+                reason
+              )
+
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                message: '重要性更新成功',
+                data: {
+                  id: result.memory.id,
+                  importance: result.memory.importance,
+                  isManuallySet: result.memory.isManuallySet,
+                  manualSetAt: result.memory.manualSetAt,
+                  oldImportance: result.historyEntry?.oldImportance
+                }
+              }))
+            } catch (err: ApiError) {
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: '更新重要性失败: ' + err.message }))
+            }
+          })
+          return
+        }
+
+        // GET /api/memory/:id/history - 获取记忆重要性修改历史
+        if (path.match(/^\/api\/memory\/\d+\/history$/) && req.method === 'GET') {
+          const memoryId = parseInt(path.split('/')[3])
+
+          try {
+            const { memory } = await import('./utils/memory/index')
+            const history = await memory.getImportanceHistory(memoryId)
+
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                memoryId,
+                history: history.map(h => ({
+                  id: h.id,
+                  oldImportance: h.oldImportance,
+                  newImportance: h.newImportance,
+                  operator: h.operator,
+                  operatorType: h.operatorType,
+                  reason: h.reason,
+                  createdAt: h.createdAt
+                }))
+              }
+            }))
+          } catch (err: ApiError) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: '获取历史失败: ' + err.message }))
+          }
           return
         }
 

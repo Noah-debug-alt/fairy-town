@@ -1,7 +1,7 @@
 // 记忆管理系统 - 斯坦福小镇风格
 // 核心功能：记忆存储、检索、重要性计算、反思生成、记忆压缩
 
-import { PrismaClient, Memory, Character, Observation, Reflection, MemorySummary } from '@prisma/client';
+import { PrismaClient, Memory, Observation, Reflection, MemorySummary, MemoryImportanceHistory } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -309,10 +309,23 @@ export const memory = {
       return { ...mem, score };
     }));
 
-    return scoredMemories
+    const result = scoredMemories
       .sort((a, b) => (b.score || 0) - (a.score || 0))
       .slice(0, limit)
-      .map(({ score, ...mem }) => mem);
+      .map(({ score: _score, ...mem }) => mem);
+
+    // 更新访问计数：检索到的记忆增加访问次数
+    if (result.length > 0) {
+      await prisma.memory.updateMany({
+        where: { id: { in: result.map(m => m.id) } },
+        data: {
+          accessCount: { increment: 1 },
+          lastAccessedAt: new Date()
+        }
+      });
+    }
+
+    return result;
   },
 
   // 获取重要记忆
@@ -414,11 +427,82 @@ export const memory = {
     });
   },
 
-  // 更新记忆重要性
+  // 更新记忆重要性（系统自动更新）
   updateMemoryImportance: async (memoryId: number, importance: number): Promise<Memory> => {
     return await prisma.memory.update({
       where: { id: memoryId },
       data: { importance: Math.min(10, Math.max(1, importance)) }
+    });
+  },
+
+  // 用户手动设置记忆重要性（带历史记录）
+  setMemoryImportance: async (
+    memoryId: number,
+    newImportance: number,
+    operator: string = 'user',
+    reason?: string
+  ): Promise<{ memory: Memory; historyEntry: MemoryImportanceHistory | null }> => {
+    // 验证重要性范围
+    if (newImportance < 1 || newImportance > 10) {
+      throw new Error('重要性值必须在 1-10 范围内');
+    }
+
+    // 获取当前记忆
+    const currentMemory = await prisma.memory.findUnique({
+      where: { id: memoryId }
+    });
+
+    if (!currentMemory) {
+      throw new Error('记忆不存在');
+    }
+
+    const oldImportance = currentMemory.importance;
+
+    // 如果值相同，直接返回
+    if (oldImportance === newImportance) {
+      return { memory: currentMemory, historyEntry: null };
+    }
+
+    // 使用事务更新记忆并记录历史
+    const result = await prisma.$transaction(async (tx) => {
+      // 更新记忆
+      const updatedMemory = await tx.memory.update({
+        where: { id: memoryId },
+        data: {
+          importance: newImportance,
+          isManuallySet: true,
+          manualSetBy: operator,
+          manualSetAt: new Date()
+        }
+      });
+
+      // 记录修改历史
+      const historyEntry = await tx.memoryImportanceHistory.create({
+        data: {
+          memoryId,
+          oldImportance,
+          newImportance,
+          operator,
+          operatorType: 'user',
+          reason: reason || null
+        }
+      });
+
+      return { memory: updatedMemory, historyEntry };
+    });
+
+    return result;
+  },
+
+  // 获取记忆重要性修改历史
+  getImportanceHistory: async (
+    memoryId: number,
+    limit: number = 20
+  ): Promise<MemoryImportanceHistory[]> => {
+    return await prisma.memoryImportanceHistory.findMany({
+      where: { memoryId },
+      orderBy: { createdAt: 'desc' },
+      take: limit
     });
   },
 
@@ -438,7 +522,7 @@ export const memory = {
   },
 
   // 检查并触发反思
-  checkAndTriggerReflection: async (characterId: number, novelId: number): Promise<boolean> => {
+  checkAndTriggerReflection: async (characterId: number, _novelId: number): Promise<boolean> => {
     const recentMemories = await prisma.memory.findMany({
       where: {
         characterId,

@@ -86,10 +86,18 @@ model Memory {
   sentiment        String?
   source           String    @default("auto")
   relatedMemoryIds String    @default("[]")
+  // 访问频率统计字段
+  accessCount      Int       @default(0)
+  lastAccessedAt   DateTime?
+  // 用户自定义重要性字段
+  isManuallySet    Boolean   @default(false)
+  manualSetBy      String?
+  manualSetAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   novel            Novel     @relation(fields: [novelId], references: [id])
   character        Character @relation(fields: [characterId], references: [id])
+  importanceHistory MemoryImportanceHistory[]
 }
 
 model MemorySummary {
@@ -240,4 +248,20 @@ model TownStatus {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   novel          Novel    @relation(fields: [novelId], references: [id])
+}
+
+// 记忆重要性修改历史模型
+model MemoryImportanceHistory {
+  id            Int      @id @default(autoincrement())
+  memoryId      Int
+  oldImportance Int
+  newImportance Int
+  operator      String
+  operatorType  String   @default("user")
+  reason        String?
+  createdAt     DateTime @default(now())
+  memory        Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@index([memoryId])
+  @@index([createdAt])
 }

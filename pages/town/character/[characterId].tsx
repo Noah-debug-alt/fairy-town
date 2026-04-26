@@ -20,6 +20,8 @@ import {
     Select,
     DatePicker,
     Collapse,
+    Modal,
+    InputNumber,
 } from 'antd';
 import {
     ArrowLeftOutlined,
@@ -31,6 +33,8 @@ import {
     ReloadOutlined,
     ClockCircleOutlined,
     BookOutlined,
+    EditOutlined,
+    StarOutlined,
 } from '@ant-design/icons';
 
 const { Header, Content } = Layout;
@@ -52,6 +56,13 @@ interface Memory {
     type: 'plot' | 'dialogue' | 'reflection' | 'observation';
     timestamp: string;
     importance: number;
+    // 新增字段：访问频率统计
+    accessCount: number;
+    lastAccessedAt: string | null;
+    // 新增字段：用户自定义重要性
+    isManuallySet: boolean;
+    manualSetBy: string | null;
+    manualSetAt: string | null;
 }
 
 interface ChatMessage {
@@ -110,6 +121,13 @@ const CharacterDetailPage: React.FC = () => {
     const [memoryFilter, setMemoryFilter] = useState<string>('all');
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize] = useState(5);
+
+    // 自定义重要性弹窗相关状态
+    const [importanceModalVisible, setImportanceModalVisible] = useState(false);
+    const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
+    const [newImportance, setNewImportance] = useState(5);
+    const [importanceReason, setImportanceReason] = useState('');
+    const [importanceLoading, setImportanceLoading] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -286,6 +304,56 @@ const CharacterDetailPage: React.FC = () => {
     const handleResetMemory = () => {
         setMemories([]);
         message.success('角色记忆已重置');
+    };
+
+    // 打开自定义重要性弹窗
+    const handleOpenImportanceModal = (memory: Memory) => {
+        setSelectedMemory(memory);
+        setNewImportance(memory.importance);
+        setImportanceReason('');
+        setImportanceModalVisible(true);
+    };
+
+    // 提交重要性修改
+    const handleSubmitImportance = async () => {
+        if (!selectedMemory) return;
+
+        if (newImportance < 1 || newImportance > 10) {
+            message.error('重要性值必须在 1-10 范围内');
+            return;
+        }
+
+        setImportanceLoading(true);
+        try {
+            const response = await fetch(`/api/memory/${selectedMemory.id}/importance`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    importance: newImportance,
+                    operator: 'user',
+                    reason: importanceReason || undefined
+                })
+            });
+
+            const data = await response.json();
+            if (data.code === 200) {
+                message.success('重要性更新成功');
+                // 更新本地记忆列表
+                setMemories(prev => prev.map(m =>
+                    m.id === selectedMemory.id
+                        ? { ...m, importance: newImportance, isManuallySet: true }
+                        : m
+                ));
+                setImportanceModalVisible(false);
+            } else {
+                message.error(data.message || '更新失败');
+            }
+        } catch (error) {
+            console.error('更新重要性失败:', error);
+            message.error('更新失败，请重试');
+        } finally {
+            setImportanceLoading(false);
+        }
     };
 
     const handleGoToCharacter = (targetCharacterId: number) => {
@@ -555,16 +623,37 @@ const CharacterDetailPage: React.FC = () => {
                                 }}
                             >
                                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                    <Space>
-                                        <Tag color={memoryTypeColors[memory.type]}>
-                                            {memoryTypeLabels[memory.type]}
-                                        </Tag>
-                                        <Text type="secondary">
-                                            <ClockCircleOutlined /> {new Date(memory.timestamp).toLocaleString('zh-CN')}
-                                        </Text>
-                                        <Text type="secondary">
-                                            重要性: {memory.importance}/10
-                                        </Text>
+                                    <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                                        <Space>
+                                            <Tag color={memoryTypeColors[memory.type]}>
+                                                {memoryTypeLabels[memory.type]}
+                                            </Tag>
+                                            <Text type="secondary">
+                                                <ClockCircleOutlined /> {new Date(memory.timestamp).toLocaleString('zh-CN')}
+                                            </Text>
+                                            <Text type="secondary">
+                                                重要性: {memory.importance}/10
+                                            </Text>
+                                            {/* 显示访问次数 */}
+                                            <Tag color="blue" style={{ marginLeft: 4 }}>
+                                                访问: {memory.accessCount || 0}次
+                                            </Tag>
+                                            {/* 显示手动设置标识 */}
+                                            {memory.isManuallySet && (
+                                                <Tag color="gold" icon={<StarOutlined />}>
+                                                    已自定义
+                                                </Tag>
+                                            )}
+                                        </Space>
+                                        {/* 自定义重要性按钮 */}
+                                        <Button
+                                            type="link"
+                                            size="small"
+                                            icon={<EditOutlined />}
+                                            onClick={() => handleOpenImportanceModal(memory)}
+                                        >
+                                            自定义重要性
+                                        </Button>
                                     </Space>
                                     <Text>{memory.content}</Text>
                                 </Space>
@@ -583,6 +672,55 @@ const CharacterDetailPage: React.FC = () => {
                     showSizeChanger={false}
                 />
             </div>
+
+            {/* 自定义重要性弹窗 */}
+            <Modal
+                title="自定义记忆重要性"
+                open={importanceModalVisible}
+                onOk={handleSubmitImportance}
+                onCancel={() => setImportanceModalVisible(false)}
+                confirmLoading={importanceLoading}
+                okText="确认修改"
+                cancelText="取消"
+            >
+                <div style={{ marginBottom: 16 }}>
+                    <Text strong>记忆内容：</Text>
+                    <div style={{
+                        padding: 12,
+                        background: '#f5f5f5',
+                        borderRadius: 4,
+                        marginTop: 8,
+                        maxHeight: 120,
+                        overflow: 'auto'
+                    }}>
+                        {selectedMemory?.content}
+                    </div>
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                    <Text strong>重要性（1-10）：</Text>
+                    <div style={{ marginTop: 8 }}>
+                        <InputNumber
+                            min={1}
+                            max={10}
+                            value={newImportance}
+                            onChange={(value) => setNewImportance(value || 5)}
+                            style={{ width: '100%' }}
+                        />
+                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                            1 = 最不重要，10 = 最重要
+                        </Text>
+                    </div>
+                </div>
+                <div>
+                    <Text strong>修改原因（可选）：</Text>
+                    <Input
+                        placeholder="请输入修改原因..."
+                        value={importanceReason}
+                        onChange={(e) => setImportanceReason(e.target.value)}
+                        style={{ marginTop: 8 }}
+                    />
+                </div>
+            </Modal>
         </div>
     );
 
