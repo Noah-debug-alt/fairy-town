@@ -1,4 +1,4 @@
-﻿﻿﻿﻿import { Character, Memory } from '@prisma/client';
+﻿﻿import { Character, Memory } from '@prisma/client';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const DEFAULT_MODEL = process.env.LLM_MODEL || 'qwen3:4b';

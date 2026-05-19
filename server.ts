@@ -351,7 +351,6 @@ async function startServer() {
                   description: char.description || '',
                   plotSetting: char.plotSetting || '',
                   relationships: JSON.stringify(char.relationships || []),
-                  出场情节: char.出场情节 || '',
                   coreIdentity: char.coreIdentity || '',
                   classicLines: char.classicLines ? JSON.stringify(char.classicLines) : '[]'
                 }
@@ -2388,31 +2387,79 @@ ${contextMessages}
 
             const newChapterIndex = (maxPlot._max.chapterIndex || 0) + 1
 
-            // Create a new plot from prophecy
-            const newPlot = await prisma.plot.create({
-              data: {
-                novelId: prophecy.novelId,
-                chapterIndex: newChapterIndex,
-                sceneIndex: 1,
-                title: prophecy.title,
-                content: prophecy.content,
-                dialogueContent: '[]',
-                narrationContent: prophecy.content,
-                location: '',
-                involvedCharacterIds: prophecy.involvedCharacterIds,
-                source: 'prophecy',
-                prophecyId: prophecyId,
-                isCompleted: false
-              }
+            // 修复：获取小说的角色信息，传入 convertProphecyToPlots
+            // 这样生成的对话才能正确识别角色并填充 involvedCharacterIds
+            const characters = await prisma.character.findMany({
+              where: { novelId: prophecy.novelId },
+              select: { id: true, name: true, description: true }
             })
+
+            // 修复：调用 convertProphecyToPlots 将预言转换为带有对话的情节
+            // 这样采纳的预言才能在小镇模拟中正确演绎
+            const { convertProphecyToPlots } = await import('./utils/prophecy')
+            const convertedPlots = await convertProphecyToPlots(
+              { title: prophecy.title, content: prophecy.content },
+              prophecy.novelId,
+              newChapterIndex,
+              characters
+            )
+
+            // 创建转换后的情节（可能包含多个场景）
+            const createdPlots = []
+            for (const plotData of convertedPlots) {
+              // 修复：使用转换后的 involvedCharacterIds，而不是预言原始的
+              // 因为转换过程会根据对话内容识别实际参与的角色
+              const involvedIds = plotData.involvedCharacterIds.length > 0
+                ? plotData.involvedCharacterIds
+                : prophecy.involvedCharacterIds
+
+              const newPlot = await prisma.plot.create({
+                data: {
+                  novelId: prophecy.novelId,
+                  chapterIndex: plotData.chapterIndex,
+                  sceneIndex: plotData.sceneIndex,
+                  title: plotData.title,
+                  content: plotData.content,
+                  dialogueContent: JSON.stringify(plotData.dialogueContent || []),
+                  narrationContent: plotData.narrationContent,
+                  location: plotData.location || '',
+                  involvedCharacterIds: involvedIds,
+                  source: 'prophecy',
+                  prophecyId: prophecyId,
+                  isCompleted: false
+                }
+              })
+              createdPlots.push(newPlot)
+            }
+
+            // 如果转换失败（返回空数组），创建一个基本的情节
+            if (createdPlots.length === 0) {
+              const fallbackPlot = await prisma.plot.create({
+                data: {
+                  novelId: prophecy.novelId,
+                  chapterIndex: newChapterIndex,
+                  sceneIndex: 1,
+                  title: prophecy.title,
+                  content: prophecy.content,
+                  dialogueContent: '[]',
+                  narrationContent: prophecy.content,
+                  location: '',
+                  involvedCharacterIds: prophecy.involvedCharacterIds,
+                  source: 'prophecy',
+                  prophecyId: prophecyId,
+                  isCompleted: false
+                }
+              })
+              createdPlots.push(fallbackPlot)
+            }
 
             await prisma.$disconnect()
             res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({
               code: 200,
               data: {
-                plot: newPlot,
-                message: 'Prophecy adopted successfully'
+                plots: createdPlots,
+                message: `Prophecy adopted successfully. Created ${createdPlots.length} plot scene(s) with dialogue content.`
               }
             }))
           } catch (err: ApiError) {
@@ -2546,8 +2593,8 @@ ${contextMessages}
           return
         }
 
-        // POST /api/plot/:id/ai-rewrite - AI assisted rewrite
-        if (path.match(/^\/api\/plot\/\d+\/ai-rewrite$/) && req.method === 'POST') {
+        // 修复：路由路径从 /ai-rewrite 改为 /rewrite，与前端一致
+        if (path.match(/^\/api\/plot\/\d+\/rewrite$/) && req.method === 'POST') {
           const plotId = parseInt(path.split('/')[3])
           let body = ''
           req.on('data', chunk => body += chunk)
@@ -2598,8 +2645,8 @@ ${contextMessages}
           return
         }
 
-        // POST /api/plot/:id/generate-branches - Generate branch options
-        if (path.match(/^\/api\/plot\/\d+\/generate-branches$/) && req.method === 'POST') {
+        // 修复：路由路径从 /generate-branches 改为 /branches，与前端一致
+        if (path.match(/^\/api\/plot\/\d+\/branches$/) && req.method === 'POST') {
           const plotId = parseInt(path.split('/')[3])
           const { PrismaClient } = await import('@prisma/client')
           const prisma = new PrismaClient()
@@ -2640,6 +2687,175 @@ ${contextMessages}
             res.writeHead(500, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ code: 500, message: 'Failed to generate branches: ' + err.message }))
           }
+          return
+        }
+
+        // 修复：添加缺失的 /apply-rewrite 端点，将 AI 改写的对话应用到情节
+        // 改写后的对话必须转换为小镇模拟兼容的格式："[标签] 角色名：'对话内容'"
+        if (path.match(/^\/api\/plot\/\d+\/apply-rewrite$/) && req.method === 'POST') {
+          const plotId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              const data = JSON.parse(body)
+              const { dialogues } = data
+
+              if (!dialogues || !Array.isArray(dialogues) || dialogues.length === 0) {
+                await prisma.$disconnect()
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 400, message: 'No dialogues provided' }))
+                return
+              }
+
+              const originalPlot = await prisma.plot.findUnique({
+                where: { id: plotId }
+              })
+
+              if (!originalPlot) {
+                await prisma.$disconnect()
+                res.writeHead(404, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 404, message: 'Plot not found' }))
+                return
+              }
+
+              // 修复：将改写的对话转换为小镇模拟兼容的格式
+              // 前端传来的格式是 { speaker, content, emotion? }
+              // 小镇模拟需要的格式是 "[改编] 角色名：'对话内容'"
+              const dialogueContent = dialogues.map((d: { speaker: string; content: string; emotion?: string }) => {
+                const emotionTag = d.emotion ? `（${d.emotion}）` : ''
+                return `[改编] ${d.speaker}：'${emotionTag}${d.content}'`
+              })
+
+              const updatedPlot = await prisma.plot.update({
+                where: { id: plotId },
+                data: {
+                  dialogueContent: JSON.stringify(dialogueContent),
+                  source: 'modified'
+                }
+              })
+
+              // 记录干预历史
+              await prisma.plotIntervention.create({
+                data: {
+                  plotId: plotId,
+                  novelId: originalPlot.novelId,
+                  type: 'ai_rewrite',
+                  content: JSON.stringify({
+                    originalDialogue: originalPlot.dialogueContent,
+                    newDialogue: dialogueContent
+                  }),
+                  reason: 'AI rewrite applied'
+                }
+              })
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  plot: updatedPlot,
+                  message: 'Rewrite applied successfully'
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: 'Failed to apply rewrite: ' + err.message }))
+            }
+          })
+          return
+        }
+
+        // 修复：添加缺失的 /apply-branch 端点，将分支对话应用到情节
+        // 分支对话必须转换为小镇模拟兼容的格式
+        if (path.match(/^\/api\/plot\/\d+\/apply-branch$/) && req.method === 'POST') {
+          const plotId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              const data = JSON.parse(body)
+              const { branchIndex } = data
+
+              // 获取情节和角色
+              const plot = await prisma.plot.findUnique({
+                where: { id: plotId }
+              })
+
+              if (!plot) {
+                await prisma.$disconnect()
+                res.writeHead(404, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 404, message: 'Plot not found' }))
+                return
+              }
+
+              const characters = await prisma.character.findMany({
+                where: { novelId: plot.novelId }
+              })
+
+              // 重新生成分支以获取选中的分支数据
+              const { generatePlotBranches } = await import('./utils/prophecy')
+              const branches = await generatePlotBranches(plot, characters)
+
+              if (branchIndex < 0 || branchIndex >= branches.length) {
+                await prisma.$disconnect()
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 400, message: 'Invalid branch index' }))
+                return
+              }
+
+              const selectedBranch = branches[branchIndex]
+
+              // 修复：将分支对话转换为小镇模拟兼容的格式
+              const dialogueContent = (selectedBranch.dialogues || []).map((d: { speaker: string; content: string }) => {
+                return `[改编] ${d.speaker}：'${d.content}'`
+              })
+
+              const updatedPlot = await prisma.plot.update({
+                where: { id: plotId },
+                data: {
+                  dialogueContent: JSON.stringify(dialogueContent),
+                  source: 'modified'
+                }
+              })
+
+              // 记录干预历史
+              await prisma.plotIntervention.create({
+                data: {
+                  plotId: plotId,
+                  novelId: plot.novelId,
+                  type: 'branch',
+                  content: JSON.stringify({
+                    branchLabel: selectedBranch.label,
+                    branchDescription: selectedBranch.description,
+                    branchDialogues: dialogueContent
+                  }),
+                  reason: `Applied branch: ${selectedBranch.label}`
+                }
+              })
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  plot: updatedPlot,
+                  message: 'Branch applied successfully'
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: 'Failed to apply branch: ' + err.message }))
+            }
+          })
           return
         }
 

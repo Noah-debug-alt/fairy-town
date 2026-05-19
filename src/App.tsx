@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BookOutlined, HomeOutlined, AppstoreOutlined, ExperimentOutlined } from '@ant-design/icons';
 import HomePage from '../pages/HomePage';
 import NovelManagementPage from '../pages/NovelManagementPage.tsx';
 import ManagerPage from '../pages/manager';
@@ -30,17 +31,49 @@ function AppRoutes() {
   );
 }
 
+const navItems = [
+  { path: '/', label: '首页', icon: <HomeOutlined /> },
+  { path: '/novel-management', label: '小说管理', icon: <BookOutlined /> },
+  { path: '/manager', label: '管理中心', icon: <AppstoreOutlined /> },
+  { path: '/weaving', label: '情节编织坊', icon: <ExperimentOutlined /> },
+];
+
+function Navbar() {
+  const location = useLocation();
+
+  return (
+    <nav className="nav">
+      <div className="nav-brand">
+        <div className="nav-logo">
+          <BookOutlined style={{ fontSize: 20 }} />
+        </div>
+        <span className="nav-title">童话镇</span>
+      </div>
+      <div className="nav-links">
+        {navItems.map(item => {
+          const isActive = location.pathname === item.path ||
+            (item.path !== '/' && location.pathname.startsWith(item.path));
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`nav-link ${isActive ? 'nav-link-active' : ''}`}
+            >
+              <span className="nav-link-icon">{item.icon}</span>
+              <span className="nav-link-text">{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 function App() {
   return (
     <Router>
       <div className="app">
-        <nav className="nav">
-          <Link to="/" className="nav-link">首页</Link>
-          <Link to="/novel-management" className="nav-link">小说管理</Link>
-          <Link to="/manager" className="nav-link">管理中心</Link>
-          <Link to="/weaving" className="nav-link">情节编织坊</Link>
-        </nav>
-
+        <Navbar />
         <AppRoutes />
       </div>
     </Router>

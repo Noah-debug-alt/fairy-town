@@ -2,14 +2,13 @@ import os
 import sys
 import base64
 import argparse
-import asyncio
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import torch
-from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+from diffusers import StableDiffusionXLPipeline
 from diffusers import DPMSolverMultistepScheduler
 
 app = FastAPI()
@@ -26,7 +25,7 @@ class GenerateRequest(BaseModel):
     negative_prompt: str = "low quality, blurry, text, watermark, ugly, deformed, noisy, oversaturated, cropped, worst quality, low resolution, bad anatomy"
     width: int = 512
     height: int = 512
-    steps: int = 25
+    steps: int = 15  # 修复：默认步数从20改为15，加快生成速度
     guidance_scale: float = 7.5
     seed: Optional[int] = None
 
@@ -41,12 +40,14 @@ def load_model(path: str):
 
     print(f"Loading model from: {path}")
     
-    # RTX 50系列显卡需要更新的PyTorch版本，暂时使用CPU模式
-    use_cpu = True  # 强制使用CPU模式
+    use_cpu = not torch.cuda.is_available()
     
     try:
-        if not use_cpu and torch.cuda.is_available():
-            print("Using GPU")
+        if not use_cpu:
+            print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+            print(f"CUDA Version: {torch.version.cuda}")
+            print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+            
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 path,
                 torch_dtype=torch.float16,
@@ -55,7 +56,7 @@ def load_model(path: str):
             )
             pipe = pipe.to("cuda")
         else:
-            print("Using CPU (RTX 50系列需要升级PyTorch才能使用GPU)")
+            print("Using CPU (CUDA not available)")
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 path,
                 torch_dtype=torch.float32,
@@ -68,7 +69,8 @@ def load_model(path: str):
 
         if not use_cpu and torch.cuda.is_available():
             pipe.enable_attention_slicing()
-            pipe.enable_vae_slicing()
+            pipe.vae.enable_slicing()
+            torch.cuda.empty_cache()
 
         model_loaded = True
         model_path = path
@@ -76,6 +78,8 @@ def load_model(path: str):
         return True
     except Exception as e:
         print(f"Failed to load model: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 @app.get("/")

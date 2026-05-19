@@ -16,46 +16,48 @@ interface ProphecyData {
     involvedCharacterIds: number[];
 }
 
-const PROPHECY_GENERATION_PROMPT = `You are a novel plot prediction engine. Based on the following existing plots, predict possible future developments.
+// 修复：预言生成prompt改为中文，确保生成的预言内容是中文
+const PROPHECY_GENERATION_PROMPT = `你是一位小说情节预测引擎。基于以下已有情节，预测可能的未来发展。
 
-Novel Title: {novelTitle}
+## 小说标题
+{novelTitle}
 
-Existing Plots:
+## 已有情节
 {existingPlots}
 
-Characters:
+## 角色
 {characters}
 
-Task:
-Generate 3-4 possible future plot branches. Each branch should include:
-1. Title and content (200-300 words)
-2. Probability (0-100, based on how likely this development is)
-3. Ending type (good, bad, hidden, tragic, or normal)
-4. Key factors that influence this branch
-5. Involved character names
+## 任务
+生成3-4个可能的未来情节分支。每个分支应包含：
+1. 标题和内容（200-300字，以小说叙述风格描述）
+2. 概率（0-100，基于该发展的可能性）
+3. 结局类型（good, bad, hidden, tragic, 或 normal）
+4. 影响该分支的关键因素
+5. 涉及的角色名
 
-Requirements:
-1. Predictions should logically follow from existing plots
-2. Different branches should have clear differences
-3. Consider character personalities and relationships
-4. Include at least one "unexpected" branch
-5. Maintain the style and tone of the original novel
+## 要求
+1. 预测应从已有情节逻辑推导
+2. 不同分支应有明显差异
+3. 考虑角色性格和关系
+4. 至少包含一个"出乎意料"的分支
+5. 保持原小说的风格和基调
 
-Output format (JSON):
+输出格式（JSON）：
 {
   "prophecies": [
     {
-      "title": "Prophecy Title",
-      "content": "Prophecy content...",
+      "title": "预言标题",
+      "content": "预言内容（以小说叙述风格描述，200-300字）...",
       "probability": 35,
       "endingType": "good",
-      "keyFactors": ["factor1", "factor2"],
-      "involvedCharacters": ["Character1", "Character2"]
+      "keyFactors": ["因素1", "因素2"],
+      "involvedCharacters": ["角色1", "角色2"]
     }
   ]
 }
 
-Output only the JSON, no additional text.`;
+只输出JSON，不要其他文字。`;
 
 export async function generateProphecies(
     novel: Novel,
@@ -65,14 +67,14 @@ export async function generateProphecies(
     try {
         const llm = await getLlmModule();
 
-        // Format existing plots
-        const plotsText = plots.map((p, index) => 
-            `${index + 1}. Chapter ${p.chapterIndex} Scene ${p.sceneIndex}: ${p.title}\n   ${p.content || p.narrationContent}`
+        // 修复：格式化已有情节为中文格式
+        const plotsText = plots.map((p, index) =>
+            `${index + 1}. 第${p.chapterIndex}章 第${p.sceneIndex}节: ${p.title}\n   ${p.content || p.narrationContent}`
         ).join('\n\n');
 
-        // Format characters
-        const charactersText = characters.map(c => 
-            `- ${c.name}: ${c.description || 'No description'}`
+        // 修复：格式化角色为中文格式
+        const charactersText = characters.map(c =>
+            `- ${c.name}: ${c.description || '无描述'}`
         ).join('\n');
 
         // Build prompt
@@ -84,7 +86,7 @@ export async function generateProphecies(
         // Call LLM with qwen3:8b model
         console.log(`[generateProphecies] Using model: ${PROPHECY_MODEL}`);
         const response = await llm.chat(prompt, { model: PROPHECY_MODEL, temperature: 0.7 });
-        
+
         // Parse response
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
@@ -114,8 +116,8 @@ export async function generateProphecies(
                 title: p.title || 'Untitled Prophecy',
                 content: p.content || '',
                 probability: Math.min(100, Math.max(0, p.probability || 50)),
-                endingType: ['good', 'bad', 'hidden', 'tragic', 'normal'].includes(p.endingType) 
-                    ? p.endingType 
+                endingType: ['good', 'bad', 'hidden', 'tragic', 'normal'].includes(p.endingType)
+                    ? p.endingType
                     : 'normal',
                 keyFactors: p.keyFactors || [],
                 involvedCharacterIds: involvedIds
@@ -163,10 +165,13 @@ export async function generateProphecies(
     }
 }
 
+// 修复：convertProphecyToPlots 需要接收角色信息，并使用与小说解析相同的对话格式
+// 这样生成的对话才能在小镇模拟中正确演绎
 export async function convertProphecyToPlots(
     prophecy: { title: string; content: string },
     novelId: number,
-    startChapterIndex: number
+    startChapterIndex: number,
+    characters: { id: number; name: string; description?: string }[] = []
 ): Promise<{
     chapterIndex: number;
     sceneIndex: number;
@@ -180,48 +185,94 @@ export async function convertProphecyToPlots(
     try {
         const llm = await getLlmModule();
 
-        const prompt = `Convert the following prophecy into 2-3 detailed plot segments that can be simulated in a town.
+        // 构建角色信息文本
+        const charactersText = characters.length > 0
+            ? characters.map(c => `- ${c.name}${c.description ? `: ${c.description}` : ''}`).join('\n')
+            : '（未提供角色信息，请根据预言内容推断合适的角色）';
 
-Prophecy Title: ${prophecy.title}
-Prophecy Content: ${prophecy.content}
+        // 使用与小说解析相同的对话格式要求
+        const prompt = `你是一位专业的话剧编剧。你的任务是将下面的预言内容，改编为适合在小镇实时动态中展示的话剧剧本形式。
 
-For each plot segment, provide:
-1. Scene title
-2. Narration content (scene description)
-3. Dialogue content (character conversations)
-4. Location name
+## 预言标题
+${prophecy.title}
 
-Output format (JSON):
+## 预言内容
+${prophecy.content}
+
+## 可用角色
+${charactersText}
+
+## 改编规则（必须严格遵守！！！否则系统会崩溃）
+1. 只输出JSON，不要任何解释、描述或其他文字，不要用markdown代码块包裹。
+2. 将预言内容改编为2-3个话剧场景（plots），每个场景是一个完整的小情节。
+3. 对话格式要求（极度重要！）：
+   - 对话必须以标签开头：[完全按照情节]、[改编] 或 [补充]
+   - 格式必须为："[标签] 角色名：'对话内容'"
+   - 例如："[补充] 小红帽：'今天天气真好！'"
+   - 极度重要：请一定要保留角色名，否则无法识别是哪位角色在说话
+4. 如果预言只有叙述没有对话，请根据场景上下文**补充**合理的对话和动作
+5. 每个场景的 dialogueContent 数组不能为空，至少要有2-3条对话或动作
+
+输出格式（JSON）：
 {
   "plots": [
     {
-      "title": "Scene Title",
-      "narration": "Scene description...",
+      "title": "场景标题",
+      "narration": "场景描述和旁白...",
       "dialogues": [
-        "Character A: Dialogue content",
-        "Character B: Dialogue content"
+        "[补充] 角色A：'对话内容'",
+        "[动作] （角色动作描写）"
       ],
-      "location": "Location Name"
+      "location": "地点名称",
+      "involvedCharacterNames": ["角色A", "角色B"]
     }
   ]
 }
 
-Output only the JSON, no additional text.`;
+只输出JSON，不要其他文字。`;
 
-        // Call LLM with qwen3:8b model
         console.log(`[convertProphecyToPlots] Using model: ${PROPHECY_MODEL}`);
+        console.log(`[convertProphecyToPlots] Characters available: ${characters.map(c => c.name).join(', ')}`);
+
         const response = await llm.chat(prompt, { model: PROPHECY_MODEL, temperature: 0.7 });
+        console.log(`[convertProphecyToPlots] LLM response preview: ${response.substring(0, 500)}...`);
+
         const jsonMatch = response.match(/\{[\s\S]*\}/);
-        
+
         if (!jsonMatch) {
+            console.error('[convertProphecyToPlots] Failed to parse LLM response as JSON');
             throw new Error('Failed to parse plot conversion response');
         }
 
         const parsed = JSON.parse(jsonMatch[0]);
         const plots = [];
 
+        // 构建角色名到ID的映射
+        const characterNameToId = new Map<string, number>();
+        characters.forEach(c => {
+            characterNameToId.set(c.name, c.id);
+        });
+
         for (let i = 0; i < (parsed.plots || []).length; i++) {
             const p = parsed.plots[i];
+
+            // 根据角色名映射获取 involvedCharacterIds
+            const involvedIds: number[] = [];
+            for (const name of (p.involvedCharacterNames || [])) {
+                const id = characterNameToId.get(name);
+                if (id) {
+                    involvedIds.push(id);
+                } else {
+                    // 尝试模糊匹配
+                    for (const [charName, charId] of characterNameToId) {
+                        if (name.includes(charName) || charName.includes(name)) {
+                            involvedIds.push(charId);
+                            break;
+                        }
+                    }
+                }
+            }
+
             plots.push({
                 chapterIndex: startChapterIndex,
                 sceneIndex: i + 1,
@@ -229,11 +280,12 @@ Output only the JSON, no additional text.`;
                 content: p.narration || '',
                 narrationContent: p.narration || '',
                 dialogueContent: p.dialogues || [],
-                involvedCharacterIds: [],
+                involvedCharacterIds: involvedIds,
                 location: p.location || ''
             });
         }
 
+        console.log(`[convertProphecyToPlots] Converted to ${plots.length} plots with dialogues`);
         return plots;
     } catch (error) {
         console.error('Error converting prophecy to plots:', error);
@@ -252,6 +304,8 @@ Output only the JSON, no additional text.`;
 }
 
 // AI assisted plot rewrite
+// 修复：AI改写对话需要使用中文prompt，并确保对话格式与小镇模拟兼容
+// 改写后的对话在应用到情节时会被转换为 "[改编] 角色名：'对话内容'" 格式
 export async function generatePlotRewrite(
     plot: Plot,
     characters: Character[],
@@ -260,40 +314,47 @@ export async function generatePlotRewrite(
     try {
         const llm = await getLlmModule();
 
-        const charactersText = characters.map(c => c.name).join(', ');
+        const charactersText = characters.map(c => `- ${c.name}${c.description ? `: ${c.description}` : ''}`).join('\n');
 
-        const fullPrompt = `You are a dialogue rewrite assistant. Based on the user's requirements, rewrite the following dialogue content.
+        // 修复：使用中文prompt，要求生成符合小镇模拟的对话
+        const fullPrompt = `你是一位专业的话剧编剧。根据用户的要求，改写以下情节的对话内容。
 
-Original Plot: ${plot.title}
-Original Narration: ${plot.narrationContent || 'None'}
-Original Dialogue: ${plot.dialogueContent || 'None'}
-Available Characters: ${charactersText}
+## 原始情节
+标题：${plot.title}
+旁白：${plot.narrationContent || '无'}
+原始对话：${plot.dialogueContent || '无'}
 
-User Requirements: ${prompt}
+## 可用角色
+${charactersText}
 
-Please generate new dialogue content. Each line should include:
-- Speaker name
-- Dialogue content
-- Optional emotion
+## 用户改写要求
+${prompt}
 
-Output format (JSON):
+## 改写规则
+1. 只输出JSON，不要任何解释文字
+2. 对话必须保留角色名，否则无法识别是哪位角色在说话
+3. 每条对话必须包含 speaker（角色名）和 content（对话内容）
+4. 可选包含 emotion（情感标签，如：愤怒、悲伤、开心等）
+5. 对话内容要符合角色性格和故事情境
+6. 至少生成3-5条对话
+
+输出格式（JSON）：
 {
   "dialogues": [
     {
-      "speaker": "Character Name",
-      "content": "Dialogue content",
-      "emotion": "emotion (optional)"
+      "speaker": "角色名",
+      "content": "对话内容",
+      "emotion": "情感标签（可选）"
     }
   ]
 }
 
-Output only the JSON, no additional text.`;
+只输出JSON，不要其他文字。`;
 
-        // Call LLM with qwen3:8b model
         console.log(`[generatePlotRewrite] Using model: ${PROPHECY_MODEL}`);
         const response = await llm.chat(fullPrompt, { model: PROPHECY_MODEL, temperature: 0.7 });
         const jsonMatch = response.match(/\{[\s\S]*\}/);
-        
+
         if (!jsonMatch) {
             throw new Error('Failed to parse rewrite response');
         }
@@ -302,12 +363,12 @@ Output only the JSON, no additional text.`;
         return parsed.dialogues || [];
     } catch (error) {
         console.error('Error generating plot rewrite:', error);
-        // Return empty dialogues if generation fails
         return [];
     }
 }
 
-// Generate plot branch options
+// 修复：情节分支生成需要使用中文prompt，并确保对话格式与小镇模拟兼容
+// 分支对话在应用到情节时会被转换为 "[改编] 角色名：'对话内容'" 格式
 export async function generatePlotBranches(
     plot: Plot,
     characters: Character[]
@@ -315,47 +376,49 @@ export async function generatePlotBranches(
     try {
         const llm = await getLlmModule();
 
-        const charactersText = characters.map(c => `${c.name}: ${c.description || 'No description'}`).join('\n');
+        const charactersText = characters.map(c => `- ${c.name}${c.description ? `: ${c.description}` : ''}`).join('\n');
 
-        const fullPrompt = `You are a plot branch generator. Based on the current plot, generate 3 different development branches.
+        // 修复：使用中文prompt，要求生成符合小镇模拟的对话
+        const fullPrompt = `你是一位专业的话剧编剧。基于当前情节，生成3个不同的发展分支。
 
-Current Plot: ${plot.title}
-Narration: ${plot.narrationContent || 'None'}
-Current Dialogue: ${plot.dialogueContent || 'None'}
+## 当前情节
+标题：${plot.title}
+旁白：${plot.narrationContent || '无'}
+当前对话：${plot.dialogueContent || '无'}
 
-Characters:
+## 可用角色
 ${charactersText}
 
-Generate 3 different branches:
-1. Branch A: A continuation that maintains the original tone
-2. Branch B: A twist that introduces tension or conflict
-3. Branch C: An unexpected turn of events
+## 分支要求
+1. 分支A：延续原有基调的发展
+2. 分支B：引入紧张或冲突的转折
+3. 分支C：出乎意料的发展
 
-For each branch, provide:
-- Label (short title)
-- Description (brief explanation)
-- Sample dialogues (3-5 lines)
+## 生成规则
+1. 只输出JSON，不要任何解释文字
+2. 每个分支必须包含对话，对话必须保留角色名
+3. 每个分支至少3-5条对话
+4. 对话内容要符合角色性格
 
-Output format (JSON):
+输出格式（JSON）：
 {
   "branches": [
     {
-      "label": "Branch Title",
-      "description": "Brief description",
+      "label": "分支标题",
+      "description": "简要描述",
       "dialogues": [
-        { "speaker": "Character", "content": "Dialogue content" }
+        { "speaker": "角色名", "content": "对话内容" }
       ]
     }
   ]
 }
 
-Output only the JSON, no additional text.`;
+只输出JSON，不要其他文字。`;
 
-        // Call LLM with qwen3:8b model
         console.log(`[generatePlotBranches] Using model: ${PROPHECY_MODEL}`);
         const response = await llm.chat(fullPrompt, { model: PROPHECY_MODEL, temperature: 0.7 });
         const jsonMatch = response.match(/\{[\s\S]*\}/);
-        
+
         if (!jsonMatch) {
             throw new Error('Failed to parse branch response');
         }
@@ -364,27 +427,26 @@ Output only the JSON, no additional text.`;
         return parsed.branches || [];
     } catch (error) {
         console.error('Error generating plot branches:', error);
-        // Return default branches if generation fails
         return [
             {
-                label: 'Continue as Planned',
-                description: 'The story continues according to the original direction',
+                label: '延续原方向',
+                description: '故事按照原来的方向发展',
                 dialogues: [
-                    { speaker: 'Character', content: 'Let us continue on our journey.' }
+                    { speaker: '角色', content: '让我们继续前行吧。' }
                 ]
             },
             {
-                label: 'Unexpected Encounter',
-                description: 'A new character appears and changes the situation',
+                label: '意外相遇',
+                description: '一个新角色出现，改变了局面',
                 dialogues: [
-                    { speaker: 'Stranger', content: 'Excuse me, may I join you?' }
+                    { speaker: '陌生人', content: '请问，我可以加入你们吗？' }
                 ]
             },
             {
-                label: 'Hidden Secret',
-                description: 'A secret is revealed that changes everything',
+                label: '隐藏的真相',
+                description: '一个秘密被揭露，改变了一切',
                 dialogues: [
-                    { speaker: 'Character', content: 'I have something to tell you...' }
+                    { speaker: '角色', content: '我有件事要告诉你...' }
                 ]
             }
         ];
