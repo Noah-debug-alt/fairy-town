@@ -4,16 +4,19 @@ import useSWR from 'swr';
 import {
     Layout, Avatar, List, Input, Button, Switch, Slider,
     Badge, Typography, Space, Drawer, Descriptions, Tag, Empty,
-    message, Spin, Tooltip, Progress,
+    message, Spin, Tooltip, Progress, Segmented, Modal
 } from 'antd';
 import {
     ArrowLeftOutlined, SendOutlined, ReloadOutlined, BellOutlined,
     SearchOutlined, UserOutlined, EnvironmentOutlined,
     MessageOutlined, PlayCircleOutlined, PauseCircleOutlined,
     SmileOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-    CameraOutlined, EditOutlined, UndoOutlined,
+    CameraOutlined, EditOutlined, UndoOutlined, AppstoreOutlined,
+    BlockOutlined
 } from '@ant-design/icons';
 import TownMap from '../../components/TownMap';
+import PixelTownMap, { Tile, MapRegion as PixelMapRegion, CharacterOnMap, MapEvent as PixelMapEvent } from '../../components/PixelTownMap';
+import MapEditor from '../../components/MapEditor';
 import type { MapScene, MapCharacter, MapEvent } from '../../components/TownMap';
 
 const { Header, Sider, Content, Footer } = Layout;
@@ -48,6 +51,22 @@ const TownVisualizationPage: React.FC = () => {
     const [leftSiderCollapsed, setLeftSiderCollapsed] = useState(false);
     const [rightSiderCollapsed, setRightSiderCollapsed] = useState(false);
     const [screenWidth, setScreenWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+    // 新增：地图类型切换
+    const [mapType, setMapType] = useState<'classic' | 'pixel'>('pixel');
+    const [pixelMapData, setPixelMapData] = useState<{
+        townMap: {
+            id: number;
+            width: number;
+            height: number;
+            tileSize: number;
+            tiles: string;
+            walkableMap: string;
+        } | null;
+        regions: PixelMapRegion[];
+        characterPositions: CharacterOnMap[];
+    } | null>(null);
+    const [showMapEditor, setShowMapEditor] = useState(false);
 
     const isMobile = screenWidth < 768;
 
@@ -87,6 +106,22 @@ const TownVisualizationPage: React.FC = () => {
             }
         }
     );
+
+    // 新增：获取像素地图数据
+    useEffect(() => {
+        if (novelId && mapType === 'pixel') {
+            fetch(`/api/town/${novelId}/pixel-map`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data?.code === 200 && data?.data) {
+                        setPixelMapData(data.data);
+                    }
+                })
+                .catch(err => {
+                    console.error('获取像素地图数据失败:', err);
+                });
+        }
+    }, [novelId, mapType]);
 
     const filteredCharacters = characters.filter(c =>
         c.name.toLowerCase().includes(searchText.toLowerCase())
@@ -308,16 +343,114 @@ const TownVisualizationPage: React.FC = () => {
                 width: '100%',
                 position: 'relative',
             }}>
-                <TownMap
-                    scenes={scenes}
-                    characters={characters}
-                    events={events}
-                    onSceneClick={handleSceneClick}
-                    onCharacterClick={handleCharacterClick}
-                    isRunning={isRunning}
-                    speed={speed}
-                />
+                {/* 新增：地图类型切换 */}
+                <div style={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    zIndex: 100,
+                    background: 'rgba(255,255,255,0.9)',
+                    padding: '8px',
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}>
+                    <Space direction="vertical" size="small">
+                        <Segmented
+                            value={mapType}
+                            onChange={(v) => setMapType(v as 'classic' | 'pixel')}
+                            options={[
+                                { label: '像素地图', value: 'pixel', icon: <BlockOutlined /> },
+                                { label: '经典地图', value: 'classic', icon: <AppstoreOutlined /> }
+                            ]}
+                        />
+                        {mapType === 'pixel' && (
+                            <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => setShowMapEditor(true)}
+                            >
+                                编辑地图
+                            </Button>
+                        )}
+                    </Space>
+                </div>
+
+                {/* 根据地图类型渲染不同的地图组件 */}
+                {mapType === 'pixel' && pixelMapData?.townMap ? (
+                    <PixelTownMap
+                        mapWidth={pixelMapData.townMap.width}
+                        mapHeight={pixelMapData.townMap.height}
+                        tileSize={pixelMapData.townMap.tileSize}
+                        tiles={JSON.parse(pixelMapData.townMap.tiles)}
+                        walkableMap={JSON.parse(pixelMapData.townMap.walkableMap)}
+                        regions={pixelMapData.regions}
+                        characters={pixelMapData.characterPositions}
+                        events={events.map(e => ({
+                            id: e.id,
+                            characterId: e.characterId || 0,
+                            type: e.type as 'dialogue' | 'action' | 'narration',
+                            content: e.content,
+                            timestamp: new Date(e.timestamp)
+                        }))}
+                        onCharacterClick={handleCharacterClick}
+                        showRegionBounds={true}
+                        showRegionNames={true}
+                    />
+                ) : (
+                    <TownMap
+                        scenes={scenes}
+                        characters={characters}
+                        events={events}
+                        onSceneClick={handleSceneClick}
+                        onCharacterClick={handleCharacterClick}
+                        isRunning={isRunning}
+                        speed={speed}
+                    />
+                )}
             </Content>
+
+            {/* 新增：地图编辑弹窗 */}
+            <Modal
+                title="编辑像素地图"
+                open={showMapEditor}
+                onCancel={() => setShowMapEditor(false)}
+                footer={null}
+                width={800}
+            >
+                {pixelMapData?.townMap && (
+                    <MapEditor
+                        mapWidth={pixelMapData.townMap.width}
+                        mapHeight={pixelMapData.townMap.height}
+                        tileSize={pixelMapData.townMap.tileSize}
+                        initialTiles={JSON.parse(pixelMapData.townMap.tiles)}
+                        initialWalkableMap={JSON.parse(pixelMapData.townMap.walkableMap)}
+                        regions={pixelMapData.regions}
+                        characters={pixelMapData.characterPositions}
+                        onSave={async (tiles, walkableMap) => {
+                            // 保存到服务器
+                            const res = await fetch(`/api/town/${novelId}/pixel-map`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    tiles: JSON.stringify(tiles),
+                                    walkableMap: JSON.stringify(walkableMap)
+                                })
+                            });
+                            if (res.ok) {
+                                // 更新本地数据
+                                setPixelMapData({
+                                    ...pixelMapData,
+                                    townMap: {
+                                        ...pixelMapData.townMap!,
+                                        tiles: JSON.stringify(tiles),
+                                        walkableMap: JSON.stringify(walkableMap)
+                                    }
+                                });
+                            }
+                        }}
+                    />
+                )}
+            </Modal>
 
             <Sider
                 width={320}

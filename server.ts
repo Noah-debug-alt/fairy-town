@@ -389,7 +389,9 @@ async function startServer() {
                   description: scene.description || '',
                   type: scene.type || 'public',
                   positionX: col * 220 + offsetX + 100,
-                  positionY: row * 200 + 100
+                  positionY: row * 200 + 100,
+                  // 新增：保存场景布局信息
+                  layout: scene.layout ? JSON.stringify(scene.layout) : null
                 }
               })
             }
@@ -2071,6 +2073,126 @@ ${contextMessages}
               }))
             }
           }))
+          return
+        }
+
+        // 新增：GET /api/town/:novelId/pixel-map - 获取像素地图数据
+        if (path.match(/^\/api\/town\/\d+\/pixel-map$/) && req.method === 'GET') {
+          const novelId = parseInt(path.split('/')[3])
+          const { PrismaClient } = await import('@prisma/client')
+          const prisma = new PrismaClient()
+
+          try {
+            // 获取 TownMap
+            const townMap = await prisma.townMap.findUnique({
+              where: { novelId }
+            })
+
+            if (!townMap) {
+              await prisma.$disconnect()
+              res.writeHead(404, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 404,
+                message: '像素地图数据不存在，请先运行迁移脚本'
+              }))
+              return
+            }
+
+            // 获取区域
+            const regions = await prisma.mapRegion.findMany({
+              where: { townMapId: townMap.id }
+            })
+
+            // 获取角色位置
+            const characters = await prisma.character.findMany({
+              where: { novelId },
+              include: { position: true }
+            })
+
+            const characterPositions = characters
+              .filter(c => c.position)
+              .map(c => ({
+                id: c.id,
+                name: c.name,
+                gridX: c.position!.gridX,
+                gridY: c.position!.gridY,
+                direction: c.position!.direction,
+                isMoving: c.position!.isMoving,
+                imageUrl: c.imageUrl || undefined,
+                color: undefined
+              }))
+
+            await prisma.$disconnect()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              code: 200,
+              data: {
+                townMap: {
+                  id: townMap.id,
+                  width: townMap.width,
+                  height: townMap.height,
+                  tileSize: townMap.tileSize,
+                  tiles: townMap.tiles,
+                  walkableMap: townMap.walkableMap
+                },
+                regions: regions.map(r => ({
+                  id: r.id,
+                  name: r.name,
+                  startX: r.startX,
+                  startY: r.startY,
+                  endX: r.endX,
+                  endY: r.endY,
+                  type: r.type
+                })),
+                characterPositions
+              }
+            }))
+          } catch (err: ApiError) {
+            await prisma.$disconnect()
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ code: 500, message: '获取像素地图失败: ' + err.message }))
+          }
+          return
+        }
+
+        // 新增：PUT /api/town/:novelId/pixel-map - 保存像素地图编辑
+        if (path.match(/^\/api\/town\/\d+\/pixel-map$/) && req.method === 'PUT') {
+          const novelId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              const data = JSON.parse(body)
+              const { tiles, walkableMap } = data
+
+              const townMap = await prisma.townMap.findUnique({
+                where: { novelId }
+              })
+
+              if (!townMap) {
+                await prisma.$disconnect()
+                res.writeHead(404, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 404, message: '地图不存在' }))
+                return
+              }
+
+              await prisma.townMap.update({
+                where: { id: townMap.id },
+                data: { tiles, walkableMap }
+              })
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 200, message: '地图已保存' }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: '保存地图失败: ' + err.message }))
+            }
+          })
           return
         }
 

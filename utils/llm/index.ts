@@ -444,7 +444,9 @@ function normalizeLLMResponse(parsed: any): any {
     normalized.scenes = parsed.scenes.map((scene: any) => ({
       name: scene.name || scene.名称 || scene.场景名称 || '',
       description: scene.description || scene.描述 || '',
-      type: scene.type || scene.场景类型 || 'public'
+      type: scene.type || scene.场景类型 || 'public',
+      // 新增：场景布局信息
+      layout: scene.layout || null
     }));
   }
 
@@ -675,6 +677,10 @@ ${chunk}
      - [音效] 【音效】雨声、铜锅沸腾声
      格式必须为："[标签] 角色名：'对话内容'" 或 "[标签] 非对话内容"。所有创作都严格遵循原小说的人物设定与情节走向，没有脱离原作的核心故事和情感内核。如果该情节只有旁白没有对话，请务必根据场景上下文**补充**一些合理的对话和动作，不要传空数组！
      极度重要：请一定要保留角色名，如："[完全按照情节] 角色A：'今天天气真好！'"。如果没有角色名，就无法正确识别是哪位角色在说话。
+5. 场景布局生成（用于像素地图）：
+   - 为每个场景生成详细的布局描述，用于在像素地图上渲染
+   - 布局应该反映小说中对场景的描述
+   - 包含：地面类型、建筑物位置、装饰物、可行走区域等
 
 {
   "characters": [
@@ -694,7 +700,16 @@ ${chunk}
     {
       "name": "场景名",
       "description": "场景细节描述",
-      "type": "public"
+      "type": "public",
+      "layout": {
+        "groundType": "grass|ground|path|water",
+        "buildings": [
+          {"type": "house|shop|tree|fountain|bench", "name": "建筑名称", "relativePosition": "center|corner|edge"}
+        ],
+        "features": ["garden", "pond", "bridge", "fence"],
+        "atmosphere": "温馨|神秘|热闹|安静",
+        "keyElements": ["关键元素1", "关键元素2"]
+      }
     }
   ],
   "plots": [

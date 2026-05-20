@@ -7,13 +7,10 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { generateTownMapFromScenes, parseSceneLayout, SceneLayout } from '../utils/agent/sceneLayout';
+import { Tile } from '../components/PixelTownMap';
 
 const prisma = new PrismaClient();
-
-interface Tile {
-  type: 'ground' | 'wall' | 'water' | 'grass' | 'path' | 'building';
-  variant: number;
-}
 
 /**
  * 迁移小说的场景数据到新的地图系统
@@ -31,10 +28,16 @@ export async function migrateNovelToTownMap(novelId: number) {
     return existingMap;
   }
 
-  // 1. 获取现有场景
+  // 1. 获取现有场景（包含布局信息）
   const scenes = await prisma.scene.findMany({
     where: { novelId, isActive: true },
-    orderBy: { id: 'asc' }
+    orderBy: { id: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      layout: true
+    }
   });
 
   if (scenes.length === 0) {
@@ -44,84 +47,49 @@ export async function migrateNovelToTownMap(novelId: number) {
 
   console.log(`[迁移] 找到 ${scenes.length} 个场景`);
 
-  // 2. 计算统一地图尺寸
-  // 每个场景占用 10x8 格子
-  const regionWidth = 10;
-  const regionHeight = 8;
-  const cols = Math.ceil(Math.sqrt(scenes.length));
-  const rows = Math.ceil(scenes.length / cols);
+  // 检查哪些场景有布局信息
+  const scenesWithLayout = scenes.filter(s => s.layout);
+  console.log(`[迁移] 其中 ${scenesWithLayout.length} 个场景有布局信息`);
 
-  const mapWidth = cols * regionWidth + 4;  // 额外边距
-  const mapHeight = rows * regionHeight + 4;
+  // 2. 使用新的布局生成器生成地图
+  const mapData = generateTownMapFromScenes(scenes);
 
-  console.log(`[迁移] 地图尺寸: ${mapWidth}x${mapHeight} 格子`);
+  console.log(`[迁移] 地图尺寸: ${mapData.width}x${mapData.height} 格子`);
 
-  // 3. 生成地图数据
-  const tiles = generateDefaultTiles(mapWidth, mapHeight);
-  const walkableMap = generateDefaultWalkable(mapWidth, mapHeight);
-
-  // 4. 创建 TownMap
+  // 3. 创建 TownMap
   const townMap = await prisma.townMap.create({
     data: {
       novelId,
       name: '小镇',
-      width: mapWidth,
-      height: mapHeight,
+      width: mapData.width,
+      height: mapData.height,
       tileSize: 32,
-      tiles: JSON.stringify(tiles),
-      walkableMap: JSON.stringify(walkableMap)
+      tiles: JSON.stringify(mapData.tiles),
+      walkableMap: JSON.stringify(mapData.walkableMap)
     }
   });
 
   console.log(`[迁移] 创建地图 ID: ${townMap.id}`);
 
-  // 5. 为每个 Scene 创建 MapRegion
-  for (let i = 0; i < scenes.length; i++) {
-    const scene = scenes[i];
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-
-    const startX = col * regionWidth + 2;
-    const startY = row * regionHeight + 2;
-
+  // 4. 为每个场景创建 MapRegion
+  for (const region of mapData.regions) {
     await prisma.mapRegion.create({
       data: {
         townMapId: townMap.id,
-        name: scene.name,
-        sceneId: scene.id,
-        startX,
-        startY,
-        endX: startX + regionWidth - 1,
-        endY: startY + regionHeight - 1,
-        type: scene.type || 'public'
+        name: region.name,
+        sceneId: region.sceneId,
+        startX: region.startX,
+        startY: region.startY,
+        endX: region.endX,
+        endY: region.endY,
+        type: scenes.find(s => s.id === region.sceneId)?.type || 'public'
       }
     });
 
-    // 在地图上标记区域为建筑类型
-    for (let y = startY; y < startY + regionHeight; y++) {
-      for (let x = startX; x < startX + regionWidth; x++) {
-        if (tiles[y] && tiles[y][x]) {
-          // 边界为墙，内部为地面
-          if (x === startX || x === startX + regionWidth - 1 ||
-              y === startY || y === startY + regionHeight - 1) {
-            tiles[y][x] = { type: 'wall', variant: 0 };
-          } else {
-            tiles[y][x] = { type: 'ground', variant: Math.floor(Math.random() * 3) };
-          }
-        }
-      }
-    }
-
-    console.log(`[迁移] 创建区域: ${scene.name} (${startX},${startY})-(${startX + regionWidth - 1},${startY + regionHeight - 1})`);
+    console.log(`[迁移] 创建区域: ${region.name} (${region.startX},${region.startY})-(${region.endX},${region.endY})`);
   }
 
-  // 更新地图数据（包含区域标记）
-  await prisma.townMap.update({
-    where: { id: townMap.id },
-    data: { tiles: JSON.stringify(tiles) }
-  });
-
-  // 6. 为每个角色创建位置
+  // 5. 为每个角色创建位置
   const characters = await prisma.character.findMany({
     where: { novelId }
   });
@@ -153,8 +121,8 @@ export async function migrateNovelToTownMap(novelId: number) {
     await prisma.characterPosition.create({
       data: {
         characterId: char.id,
-        gridX: startX + Math.random() * (regionWidth - 2),
-        gridY: startY + Math.random() * (regionHeight - 2),
+        gridX: startX + Math.random() * 8,  // 区域内随机位置
+        gridY: startY + Math.random() * 6,
         currentRegionId: region?.id
       }
     });
@@ -164,34 +132,6 @@ export async function migrateNovelToTownMap(novelId: number) {
 
   console.log(`[迁移] 迁移完成: ${scenes.length} 个场景, ${characters.length} 个角色`);
   return townMap;
-}
-
-/**
- * 生成默认地图格子
- */
-function generateDefaultTiles(width: number, height: number): Tile[][] {
-  const tiles: Tile[][] = [];
-  for (let y = 0; y < height; y++) {
-    tiles[y] = [];
-    for (let x = 0; x < width; x++) {
-      tiles[y][x] = { type: 'grass', variant: Math.floor(Math.random() * 3) };
-    }
-  }
-  return tiles;
-}
-
-/**
- * 生成默认可行走地图
- */
-function generateDefaultWalkable(width: number, height: number): number[][] {
-  const walkable: number[][] = [];
-  for (let y = 0; y < height; y++) {
-    walkable[y] = [];
-    for (let x = 0; x < width; x++) {
-      walkable[y][x] = 1;  // 默认全部可行走
-    }
-  }
-  return walkable;
 }
 
 /**

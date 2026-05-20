@@ -236,6 +236,9 @@ model Scene {
   imageUrl    String?
   imagePrompt String?
   mapStyle    String   @default("building")
+  // 新增：场景布局信息（JSON格式）
+  // 包含：groundType, buildings, features, atmosphere, keyElements
+  layout      String?  // JSON: { groundType, buildings[], features[], atmosphere, keyElements[] }
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   novel       Novel    @relation(fields: [novelId], references: [id])
