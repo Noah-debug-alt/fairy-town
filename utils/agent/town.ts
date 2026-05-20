@@ -1,5 +1,8 @@
-import { Character, Scene, Novel, Plot } from '@prisma/client';
+import { Character, Scene, Novel, Plot, TownMap, CharacterPosition } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
+import { MovementManager, getMovementManager } from './movement';
+import { InteractionSystem, getInteractionSystem, Interaction } from './interaction';
+import { GridPosition, euclideanDistance } from './pathfinding';
 
 export interface TownState {
     novelId: number;
@@ -44,6 +47,14 @@ export class TownSimulator {
     private currentDialogueIndex: number = 0;
     private characterMemoryBuffer: Map<number, string[]> = new Map();
     private novelCompleted: boolean = false;
+
+    // 新增：地图系统相关
+    private townMap: TownMap | null = null;
+    private movementManager: MovementManager | null = null;
+    private interactionSystem: InteractionSystem | null = null;
+    private useNewMapSystem: boolean = false;
+    private characterPositions: Map<number, CharacterPosition> = new Map();
+    private lastInteractionTime: Map<string, Date> = new Map();
 
     constructor(prismaClient: PrismaClient) {
         this.prisma = prismaClient;
@@ -124,8 +135,75 @@ export class TownSimulator {
             this.novelCompleted = true;
         }
 
+        // 新增：初始化新地图系统
+        await this.initializeMapSystem(novelId);
+
         console.log(`小镇模拟器初始化完成: ${this.characters.length} 个角色, ${this.plots.length} 个情节`);
         console.log(`当前情节索引: ${this.currentPlotIndex}/${this.plots.length}, 小说完成: ${this.novelCompleted}`);
+        console.log(`使用新地图系统: ${this.useNewMapSystem}`);
+    }
+
+    /**
+     * 新增：初始化新地图系统
+     */
+    private async initializeMapSystem(novelId: number): Promise<void> {
+        // 检查是否有 TownMap 数据
+        this.townMap = await this.prisma.townMap.findUnique({
+            where: { novelId }
+        });
+
+        if (this.townMap) {
+            this.useNewMapSystem = true;
+            this.movementManager = getMovementManager(this.prisma);
+            this.interactionSystem = getInteractionSystem(this.prisma);
+
+            // 加载角色位置
+            const positions = await this.prisma.characterPosition.findMany({
+                where: {
+                    character: { novelId }
+                },
+                include: { character: true }
+            });
+
+            for (const pos of positions) {
+                this.characterPositions.set(pos.characterId, pos);
+            }
+
+            console.log(`[地图系统] 已加载地图: ${this.townMap.width}x${this.townMap.height}, ${positions.length} 个角色位置`);
+        } else {
+            console.log(`[地图系统] 未找到地图数据，使用旧模式`);
+        }
+    }
+
+    /**
+     * 新增：获取地图数据
+     */
+    getTownMap(): TownMap | null {
+        return this.townMap;
+    }
+
+    /**
+     * 新增：获取角色位置
+     */
+    getCharacterPositions(): Map<number, CharacterPosition> {
+        return this.characterPositions;
+    }
+
+    /**
+     * 新增：更新角色位置（用于前端刷新）
+     */
+    async refreshCharacterPositions(): Promise<void> {
+        if (!this.novel || !this.useNewMapSystem) return;
+
+        const positions = await this.prisma.characterPosition.findMany({
+            where: {
+                character: { novelId: this.novel.id }
+            }
+        });
+
+        for (const pos of positions) {
+            this.characterPositions.set(pos.characterId, pos);
+        }
     }
 
     setSpeed(speed: number) {

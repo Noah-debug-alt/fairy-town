@@ -44,6 +44,9 @@ model Novel {
   townEvents   TownEvent[]
   townStatus   TownStatus?
   prophecies   Prophecy[]
+  // 新增：小镇地图系统关联
+  townMap      TownMap?
+  movements    Movement[]
 }
 
 model Character {
@@ -65,6 +68,9 @@ model Character {
   imageUrl      String?
   novel         Novel    @relation(fields: [novelId], references: [id])
   memories      Memory[]
+  // 新增：小镇地图系统关联
+  position      CharacterPosition?
+  movements     Movement[]
 }
 
 model Memory {
@@ -315,4 +321,146 @@ model PlotIntervention {
 
   @@index([plotId])
   @@index([createdAt])
+}
+
+// ============================================
+// 新增：小镇地图系统模型
+// ============================================
+
+// 统一大地图模型
+model TownMap {
+  id            Int      @id @default(autoincrement())
+  novelId       Int      @unique
+  
+  // 地图基本信息
+  name          String   @default("小镇")
+  
+  // 地图尺寸（格子数）
+  width         Int      @default(40)
+  height        Int      @default(30)
+  
+  // 每格像素大小
+  tileSize      Int      @default(32)
+  
+  // 地图数据（JSON）
+  // tiles[y][x] = { type: "ground"|"wall"|"water"|"grass"|"path"|"building", variant: 0-2 }
+  tiles         String   @default("[]")
+  
+  // 可行走区域（JSON）
+  // walkableMap[y][x] = 1 (可行走) | 0 (障碍)
+  walkableMap   String   @default("[]")
+  
+  // 背景图（可选）
+  backgroundUrl String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  novel         Novel    @relation(fields: [novelId], references: [id])
+  regions       MapRegion[]
+  
+  @@index([novelId])
+}
+
+// 地图区域（对应现有 Scene 的位置概念）
+model MapRegion {
+  id            Int      @id @default(autoincrement())
+  townMapId     Int
+  
+  // 区域名称（对应 Scene.name）
+  name          String
+  
+  // 关联的场景 ID（可选，用于兼容现有数据）
+  sceneId       Int?
+  
+  // 区域范围（格子坐标）
+  startX        Int
+  startY        Int
+  endX          Int
+  endY          Int
+  
+  // 区域类型（对应 Scene.type）
+  type          String   @default("public")
+  
+  // 区域内可行走区域（可选覆盖）
+  localWalkable String?  // JSON
+  
+  createdAt     DateTime @default(now())
+  
+  townMap       TownMap  @relation(fields: [townMapId], references: [id])
+  
+  @@index([townMapId])
+  @@index([sceneId])
+}
+
+// 角色精确位置（扩展现有 Character，不修改原模型）
+model CharacterPosition {
+  id            Int      @id @default(autoincrement())
+  characterId   Int      @unique
+  
+  // 精确位置（格子坐标，支持小数用于平滑移动）
+  gridX         Float    @default(0)
+  gridY         Float    @default(0)
+  
+  // 移动目标
+  targetX       Float?
+  targetY       Float?
+  
+  // 移动状态
+  isMoving      Boolean  @default(false)
+  moveSpeed     Float    @default(1.0)    // 格子/秒
+  
+  // 朝向
+  direction     String   @default("down") // up|down|left|right
+  
+  // 当前所在区域
+  currentRegionId Int?
+  
+  // 移动路径（JSON）
+  currentPath   String   @default("[]")   // [{x, y}, ...]
+  
+  updatedAt     DateTime @updatedAt
+  
+  character     Character @relation(fields: [characterId], references: [id])
+  
+  @@index([characterId])
+}
+
+// 移动记录
+model Movement {
+  id            Int      @id @default(autoincrement())
+  characterId   Int
+  novelId       Int
+  
+  // 起点
+  fromX         Float
+  fromY         Float
+  fromRegionId  Int?
+  
+  // 终点
+  toX           Float
+  toY           Float
+  toRegionId    Int?
+  
+  // 路径
+  path          String   @default("[]")   // JSON: [{x, y}, ...]
+  
+  // 时间
+  startTime     DateTime @default(now())
+  endTime       DateTime?
+  
+  // 状态
+  status        String   @default("moving") // moving|arrived|interrupted
+  
+  // 原因（情节触发、自主移动等）
+  reason        String?                    // plot:123, interaction, idle
+  
+  createdAt     DateTime @default(now())
+  
+  character     Character @relation(fields: [characterId], references: [id])
+  novel         Novel     @relation(fields: [novelId], references: [id])
+  
+  @@index([characterId])
+  @@index([novelId])
+  @@index([status])
 }
