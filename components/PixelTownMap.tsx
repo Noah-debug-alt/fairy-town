@@ -99,6 +99,9 @@ interface PixelTownMapProps {
   // 事件（对话气泡）
   events: MapEvent[];
 
+  // 新增：场景背景图（按区域 ID 或名称索引）
+  sceneImages?: Record<string, string>;
+
   // 回调
   onCharacterClick?: (character: CharacterOnMap) => void;
   onRegionClick?: (region: MapRegion) => void;
@@ -109,6 +112,7 @@ interface PixelTownMapProps {
   showWalkable?: boolean;
   showRegionBounds?: boolean;
   showRegionNames?: boolean;
+  useSceneImages?: boolean;  // 新增：是否使用场景图片作为背景
 
   // 缩放和偏移
   initialScale?: number;
@@ -127,6 +131,7 @@ const PixelTownMap: React.FC<PixelTownMapProps> = ({
   regions,
   characters,
   events,
+  sceneImages = {},
   onCharacterClick,
   onRegionClick,
   onMapClick,
@@ -134,6 +139,7 @@ const PixelTownMap: React.FC<PixelTownMapProps> = ({
   showWalkable = false,
   showRegionBounds = true,
   showRegionNames = true,
+  useSceneImages = true,
   initialScale = 1,
   initialOffset = { x: 0, y: 0 }
 }) => {
@@ -148,6 +154,9 @@ const PixelTownMap: React.FC<PixelTownMapProps> = ({
   
   // 角色精灵缓存
   const [characterSprites, setCharacterSprites] = useState<Record<number, HTMLImageElement>>({});
+  
+  // 新增：场景背景图缓存
+  const [sceneImageCache, setSceneImageCache] = useState<Record<string, HTMLImageElement>>({});
 
   // 加载角色精灵图
   useEffect(() => {
@@ -164,6 +173,24 @@ const PixelTownMap: React.FC<PixelTownMapProps> = ({
       }
     });
   }, [characters]);
+
+  // 新增：加载场景背景图
+  useEffect(() => {
+    if (!useSceneImages || Object.keys(sceneImages).length === 0) return;
+
+    Object.entries(sceneImages).forEach(([key, url]) => {
+      if (!sceneImageCache[key]) {
+        const img = new Image();
+        img.onload = () => {
+          setSceneImageCache(prev => ({ ...prev, [key]: img }));
+        };
+        img.onerror = () => {
+          console.warn(`[PixelTownMap] 无法加载场景图片: ${url}`);
+        };
+        img.src = url;
+      }
+    });
+  }, [sceneImages, useSceneImages]);
 
   /**
    * 绘制地图
@@ -194,28 +221,47 @@ const PixelTownMap: React.FC<PixelTownMapProps> = ({
     ctx.translate(offset.x, offset.y);
     ctx.scale(scale, scale);
 
-    // 1. 绘制格子背景
-    for (let y = 0; y < mapHeight; y++) {
-      for (let x = 0; x < mapWidth; x++) {
-        const tile = tiles[y]?.[x];
-        if (tile) {
-          const colors = TILE_COLORS[tile.type] || TILE_COLORS.grass;
-          const color = colors[tile.variant % colors.length];
+    // 新增：绘制场景背景图（如果可用）
+    if (useSceneImages && Object.keys(sceneImageCache).length > 0) {
+      for (const region of regions) {
+        const sceneImg = sceneImageCache[region.id] || sceneImageCache[region.name];
+        if (sceneImg) {
+          const regionWidth = (region.endX - region.startX + 1) * tileSize;
+          const regionHeight = (region.endY - region.startY + 1) * tileSize;
+          ctx.drawImage(
+            sceneImg,
+            region.startX * tileSize,
+            region.startY * tileSize,
+            regionWidth,
+            regionHeight
+          );
+        }
+      }
+    } else {
+      // 如果没有场景图片，绘制格子背景
+      // 1. 绘制格子背景
+      for (let y = 0; y < mapHeight; y++) {
+        for (let x = 0; x < mapWidth; x++) {
+          const tile = tiles[y]?.[x];
+          if (tile) {
+            const colors = TILE_COLORS[tile.type] || TILE_COLORS.grass;
+            const color = colors[tile.variant % colors.length];
 
-          ctx.fillStyle = color;
-          ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-
-          // 显示可行走区域
-          if (showWalkable && walkableMap[y]?.[x] === 0) {
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+            ctx.fillStyle = color;
             ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-          }
 
-          // 显示网格
-          if (showGrid) {
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            // 显示可行走区域
+            if (showWalkable && walkableMap[y]?.[x] === 0) {
+              ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+              ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            }
+
+            // 显示网格
+            if (showGrid) {
+              ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            }
           }
         }
       }
@@ -323,9 +369,9 @@ const PixelTownMap: React.FC<PixelTownMapProps> = ({
     ctx.restore();
   }, [
     mapWidth, mapHeight, tileSize, tiles, walkableMap,
-    regions, characters, events, characterSprites,
+    regions, characters, events, characterSprites, sceneImageCache,
     showGrid, showWalkable, showRegionBounds, showRegionNames,
-    scale, offset
+    useSceneImages, scale, offset
   ]);
 
   /**

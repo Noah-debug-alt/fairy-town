@@ -713,3 +713,51 @@ export function getImageGenStatus(): {
             };
     }
 }
+
+// 新增：像素风格样式 Prompt
+const PIXEL_STYLE_PROMPT = 'pixel art, 32bit style, game asset, Stardew Valley inspired, detailed pixel work';
+const PIXEL_NEGATIVE = 'realistic, 3d render, photo, text, watermark, blurry, low quality';
+
+/**
+ * 新增：通用图片生成函数
+ * 支持不同风格的图片生成
+ * 
+ * @param prompt 图片描述
+ * @param options 生成选项
+ * @returns 生成结果
+ */
+export async function generateImage(
+    prompt: string,
+    options?: {
+        width?: number;
+        height?: number;
+        negativePrompt?: string;
+        style?: 'default' | 'pixel' | 'anime' | 'realistic';
+        steps?: number;
+        name?: string;
+    }
+): Promise<ImageGenResult> {
+    const {
+        width = 512,
+        height = 512,
+        negativePrompt = BASE_NEGATIVE_PROMPT,
+        style = 'default',
+        steps = DEFAULT_STEPS,
+        name = 'image'
+    } = options || {};
+
+    // 根据风格调整 Prompt
+    let finalPrompt = prompt;
+    let finalNegative = negativePrompt;
+
+    if (style === 'pixel') {
+        finalPrompt = `${prompt}, ${PIXEL_STYLE_PROMPT}`;
+        finalNegative = `${negativePrompt}, ${PIXEL_NEGATIVE}`;
+    } else if (style === 'anime') {
+        finalPrompt = `${prompt}, anime style, Studio Ghibli inspired`;
+    } else if (style === 'realistic') {
+        finalPrompt = `${prompt}, realistic, detailed, high quality`;
+    }
+
+    return tryGenerateWithFallback(finalPrompt, finalNegative, width, height, name, '', false);
+}

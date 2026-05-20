@@ -2981,6 +2981,142 @@ ${contextMessages}
           return
         }
 
+        // 新增：POST /api/novel/:id/generate-scene-images - 生成场景像素图片
+        if (path.match(/^\/api\/novel\/\d+\/generate-scene-images$/) && req.method === 'POST') {
+          const novelId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              // 获取所有场景
+              const scenes = await prisma.scene.findMany({
+                where: { novelId, isActive: true },
+                select: { id: true, name: true, type: true, description: true, layout: true }
+              })
+
+              if (scenes.length === 0) {
+                await prisma.$disconnect()
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 400, message: '没有场景需要生成图片' }))
+                return
+              }
+
+              // 导入场景图片生成模块
+              const { generateScenePixelImage } = await import('./utils/image-gen/sceneImage')
+
+              const results = []
+              for (let i = 0; i < scenes.length; i++) {
+                const scene = scenes[i]
+                console.log(`[SceneImage] 生成场景图片 ${i + 1}/${scenes.length}: ${scene.name}`)
+
+                const result = await generateScenePixelImage(scene)
+
+                if (result.success && result.imageUrl) {
+                  await prisma.scene.update({
+                    where: { id: scene.id },
+                    data: { imageUrl: result.imageUrl }
+                  })
+                }
+
+                results.push({
+                  sceneId: scene.id,
+                  sceneName: scene.name,
+                  success: result.success,
+                  imageUrl: result.imageUrl,
+                  error: result.error
+                })
+              }
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  total: scenes.length,
+                  success: results.filter(r => r.success).length,
+                  results
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: '生成场景图片失败: ' + err.message }))
+            }
+          })
+          return
+        }
+
+        // 新增：POST /api/novel/:id/generate-character-sprites - 生成角色精灵图
+        if (path.match(/^\/api\/novel\/\d+\/generate-character-sprites$/) && req.method === 'POST') {
+          const novelId = parseInt(path.split('/')[3])
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', async () => {
+            const { PrismaClient } = await import('@prisma/client')
+            const prisma = new PrismaClient()
+
+            try {
+              // 获取所有角色
+              const characters = await prisma.character.findMany({
+                where: { novelId },
+                select: { id: true, name: true, description: true, coreIdentity: true }
+              })
+
+              if (characters.length === 0) {
+                await prisma.$disconnect()
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ code: 400, message: '没有角色需要生成精灵图' }))
+                return
+              }
+
+              // 导入角色精灵生成模块
+              const { generateCharacterSprite } = await import('./utils/image-gen/characterSprite')
+
+              const results = []
+              for (let i = 0; i < characters.length; i++) {
+                const character = characters[i]
+                console.log(`[CharacterSprite] 生成角色精灵 ${i + 1}/${characters.length}: ${character.name}`)
+
+                const result = await generateCharacterSprite(character)
+
+                if (result.success && result.imageUrl) {
+                  await prisma.character.update({
+                    where: { id: character.id },
+                    data: { imageUrl: result.imageUrl }
+                  })
+                }
+
+                results.push({
+                  characterId: character.id,
+                  characterName: character.name,
+                  success: result.success,
+                  spriteUrl: result.imageUrl,
+                  error: result.error
+                })
+              }
+
+              await prisma.$disconnect()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                code: 200,
+                data: {
+                  total: characters.length,
+                  success: results.filter(r => r.success).length,
+                  results
+                }
+              }))
+            } catch (err: ApiError) {
+              await prisma.$disconnect()
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ code: 500, message: '生成角色精灵失败: ' + err.message }))
+            }
+          })
+          return
+        }
+
       } catch (err: ApiError) {
         console.error('API Error:', err)
         res.writeHead(500, { 'Content-Type': 'application/json' })
